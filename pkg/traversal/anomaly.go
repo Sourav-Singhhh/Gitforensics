@@ -4,18 +4,22 @@ package traversal
 type AnomalyType string
 
 const (
-	AnomalyMalformedRef            AnomalyType = "MALFORMED_REF"
-	AnomalySymbolicRefCycle        AnomalyType = "SYMBOLIC_REF_CYCLE"
-	AnomalyMalformedPackedRef      AnomalyType = "MALFORMED_PACKED_REF"
-	AnomalyMalformedTree           AnomalyType = "MALFORMED_TREE"
-	AnomalyMalformedCommit         AnomalyType = "MALFORMED_COMMIT"
-	AnomalyUnsafeTreeName          AnomalyType = "UNSAFE_TREE_NAME"
-	AnomalyUnknownTreeMode         AnomalyType = "UNKNOWN_TREE_MODE"
-	AnomalyTreeTypeMismatch        AnomalyType = "TREE_TYPE_MISMATCH"
-	AnomalyRecursionDepthExceeded  AnomalyType = "RECURSION_DEPTH_EXCEEDED"
-	AnomalyMissingReferencedObject AnomalyType = "MISSING_REFERENCED_OBJECT"
-	AnomalyCorruptedLooseObject    AnomalyType = "CORRUPTED_LOOSE_OBJECT"
-	AnomalyLooseIntegrityMismatch  AnomalyType = "LOOSE_INTEGRITY_MISMATCH"
+	AnomalyMalformedRef             AnomalyType = "MALFORMED_REF"
+	AnomalySymbolicRefCycle         AnomalyType = "SYMBOLIC_REF_CYCLE"
+	AnomalyMalformedPackedRef       AnomalyType = "MALFORMED_PACKED_REF"
+	AnomalyMalformedTree            AnomalyType = "MALFORMED_TREE"
+	AnomalyMalformedCommit          AnomalyType = "MALFORMED_COMMIT"
+	AnomalyUnsafeTreeName           AnomalyType = "UNSAFE_TREE_NAME"
+	AnomalyUnknownTreeMode          AnomalyType = "UNKNOWN_TREE_MODE"
+	AnomalyTreeTypeMismatch         AnomalyType = "TREE_TYPE_MISMATCH"
+	AnomalyRecursionDepthExceeded   AnomalyType = "RECURSION_DEPTH_EXCEEDED"
+	AnomalyMissingReferencedObject  AnomalyType = "MISSING_REFERENCED_OBJECT"
+	AnomalyCorruptedLooseObject     AnomalyType = "CORRUPTED_LOOSE_OBJECT"
+	AnomalyLooseIntegrityMismatch   AnomalyType = "LOOSE_INTEGRITY_MISMATCH"
+	AnomalyPackChecksumMismatch     AnomalyType = "PACK_CHECKSUM_MISMATCH"
+	AnomalyCorruptedPackEntry       AnomalyType = "CORRUPTED_PACK_ENTRY"
+	AnomalyPackTruncatedOrCorrupted AnomalyType = "PACK_TRUNCATED_OR_CORRUPTED"
+	AnomalyPackCountMismatch        AnomalyType = "PACK_COUNT_MISMATCH"
 )
 
 // StructuralAnomaly represents a recorded structural, path, or formatting irregularity

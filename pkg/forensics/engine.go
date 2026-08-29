@@ -107,9 +107,12 @@ func RunScan(opts ScanOptions) (*ScanReport, error) {
 		return nil, fmt.Errorf("repository discovery failed: %w", err)
 	}
 
-	store := repository.NewLooseStore(repo.CommonDir, 0)
+	store, _, packGaps, storeErr := repository.NewRepositoryStore(repo.GitDir, repo.CommonDir, 0)
+	if storeErr != nil {
+		return nil, fmt.Errorf("storage initialization failed: %w", storeErr)
+	}
 
-	// Phase 3 Classification pipeline
+	// Phase 3 & 5 Classification pipeline
 	classification, err := traversal.ClassifyRepository(repo, store, opts.Limits)
 	if err != nil {
 		return nil, fmt.Errorf("graph classification failed: %w", err)
@@ -144,7 +147,16 @@ func RunScan(opts ScanOptions) (*ScanReport, error) {
 		coverageGaps = append(coverageGaps, CoverageGap{
 			Type:        CoverageGapUnresolvedPackOnly,
 			Target:      uOID,
-			Description: fmt.Sprintf("referenced object %s could not be resolved from loose storage", uOID),
+			Description: fmt.Sprintf("referenced object %s could not be resolved from storage", uOID),
+		})
+	}
+
+	// Pack-level coverage gaps (e.g. unsupported REF_DELTA)
+	for _, gap := range packGaps {
+		coverageGaps = append(coverageGaps, CoverageGap{
+			Type:        gap.Type,
+			Target:      gap.Location,
+			Description: gap.Description,
 		})
 	}
 

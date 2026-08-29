@@ -117,12 +117,22 @@ func ClassifyRepository(
 
 	allReachableBlobs := allReachableResult.Blobs
 
-	// 6. Independent physical loose-object enumeration (§8)
-	physicalObjects, looseAnomalies, err := EnumerateLooseObjects(repo.CommonDir, store)
+	// 6. Independent physical loose and packed object enumeration (§8, §16)
+	physicalObjects, physicalAnomalies, err := EnumeratePhysicalObjects(repo.CommonDir, store)
 	if err != nil {
-		return nil, fmt.Errorf("physical loose object enumeration failed: %w", err)
+		return nil, fmt.Errorf("physical object enumeration failed: %w", err)
 	}
-	allAnomalies = append(allAnomalies, looseAnomalies...)
+	allAnomalies = append(allAnomalies, physicalAnomalies...)
+
+	if combined, ok := store.(*repository.CombinedStore); ok {
+		for _, a := range combined.AllPackAnomalies() {
+			allAnomalies = append(allAnomalies, StructuralAnomaly{
+				Type:        AnomalyType(a.Type),
+				Location:    a.Location,
+				Description: a.Description,
+			})
+		}
+	}
 
 	allOnDiskBlobs := make(map[string]bool)
 	for _, phys := range physicalObjects {

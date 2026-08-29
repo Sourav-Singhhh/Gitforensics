@@ -52,9 +52,9 @@ func ExplainFinding(repoPath string, findingID string) (*ExplainResult, error) {
 	case traversal.StateHistorical:
 		recoveryExplanation = "HISTORICAL EXPOSURE: The secret is no longer present in current HEAD, but is reachable through other Git branches, tags, or refs. Anyone cloning or fetching refs can extract this secret."
 	case traversal.StateZombie:
-		recoveryExplanation = "ZOMBIE (DANGLING) EXPOSURE: The secret is an unreferenced orphan loose object physically persisting on disk in .git/objects/. It is invisible to standard 'git log' or branch checkouts, but remains fully recoverable by direct object inspection until Git garbage collection ('git gc --prune=now') deletes the file."
+		recoveryExplanation = "ZOMBIE (DANGLING) EXPOSURE: The secret is an unreferenced orphan object physically persisting on disk in loose or pack storage. It is invisible to standard 'git log' or branch checkouts, but remains fully recoverable by direct object inspection until Git garbage collection ('git gc --prune=now') deletes or repacks the object."
 	case traversal.StateUnresolved:
-		recoveryExplanation = "UNRESOLVED STORAGE: The secret is referenced in the Git DAG but its payload could not be extracted from loose storage."
+		recoveryExplanation = "UNRESOLVED STORAGE: The secret is referenced in the Git DAG but its payload could not be extracted from storage."
 	default:
 		recoveryExplanation = "Unknown exposure state."
 	}
