@@ -35,4 +35,11 @@ var (
 	ErrCommitMalformedTimezone       = errors.New("commit malformed timezone")
 	ErrCommitMissingMessageSeparator = errors.New("commit missing message separator")
 	ErrCommitMalformedHeaderLine     = errors.New("commit malformed header line")
+
+	// Repository and Reference errors (§4)
+	ErrRepositoryNotFound   = errors.New("git repository not found")
+	ErrSymbolicRefCycle     = errors.New("symbolic ref cycle detected")
+	ErrMaxPeelDepthExceeded = errors.New("maximum tag peel depth exceeded")
+	ErrMaxTreeDepthExceeded = errors.New("maximum tree recursion depth exceeded")
+	ErrObjectNotFound       = errors.New("object not found")
 )
