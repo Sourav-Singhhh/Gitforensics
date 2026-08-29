@@ -185,7 +185,7 @@ Commit:    917b467785260de1f8d9b3e272624b3dfb9bf364
 
 Build Command 1: CGO_ENABLED=0 GOFLAGS=-trimpath go build -o bin/gitforensics_1 ./cmd/gitforensics
 Build Command 2: CGO_ENABLED=0 GOFLAGS=-trimpath go build -o bin/gitforensics_2 ./cmd/gitforensics
-SHA-256 Hash 1:  dd524da12c147431b779281faf027506f824166aedd01465663c0a40feb7f0a5
-SHA-256 Hash 2:  dd524da12c147431b779281faf027506f824166aedd01465663c0a40feb7f0a5
+SHA-256 Hash 1:  c226717515e31b7f6d68ab6ce8c8b22e611f9b328df250f62083eff0369b214c
+SHA-256 Hash 2:  c226717515e31b7f6d68ab6ce8c8b22e611f9b328df250f62083eff0369b214c
 Verification:    BIT-FOR-BIT IDENTICAL (Reproducible Build Verified)
 ================================================================================

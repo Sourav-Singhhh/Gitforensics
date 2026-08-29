@@ -67,6 +67,34 @@ func ResolveHEAD(repo *Repository) (string, bool, error) {
 	return content, false, nil
 }
 
+// validateRefPath ensures a reference path stays safely inside the refs/ namespace
+// and contains no directory traversal components or absolute paths (§4, §19).
+func validateRefPath(refName string) error {
+	if refName == "" {
+		return fmt.Errorf("empty ref name")
+	}
+	// Reject backslashes and Windows-style paths (C:\, \\)
+	if strings.Contains(refName, "\\") || strings.Contains(refName, ":") {
+		return fmt.Errorf("invalid characters in ref name %q", refName)
+	}
+	// Reject absolute paths
+	if strings.HasPrefix(refName, "/") {
+		return fmt.Errorf("ref name %q cannot be an absolute path", refName)
+	}
+	// Check segments: must not contain "." or ".." or empty segments
+	parts := strings.Split(refName, "/")
+	for _, part := range parts {
+		if part == "" || part == "." || part == ".." {
+			return fmt.Errorf("ref name %q contains invalid path traversal segments", refName)
+		}
+	}
+	// Must start with "refs/" (or be "HEAD")
+	if refName != "HEAD" && !strings.HasPrefix(refName, "refs/") {
+		return fmt.Errorf("ref name %q must start with refs/", refName)
+	}
+	return nil
+}
+
 // ResolveSymbolicRef resolves a symbolic reference name (e.g. "refs/heads/main") to its 40-hex OID.
 // Guards against infinite symbolic reference loops using a visited set and maxDepth (typically 10).
 func ResolveSymbolicRef(repo *Repository, refName string, maxDepth int) (string, error) {
@@ -74,6 +102,10 @@ func ResolveSymbolicRef(repo *Repository, refName string, maxDepth int) (string,
 	currRef := refName
 
 	for depth := 0; depth < maxDepth; depth++ {
+		if err := validateRefPath(currRef); err != nil {
+			return "", fmt.Errorf("malformed symbolic ref: %w", err)
+		}
+
 		if visited[currRef] {
 			return "", object.ErrSymbolicRefCycle
 		}

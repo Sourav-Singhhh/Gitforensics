@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"gitforensics/pkg/object"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -546,5 +547,101 @@ func TestTruncatedOfsDeltaOffsetRecovery(t *testing.T) {
 	}
 	if !foundTruncatedAnomaly {
 		t.Errorf("expected truncated OFS_DELTA anomaly to be recorded")
+	}
+}
+
+// Regression Test for SEC-01: ApplyDelta size ceiling and panic prevention
+func TestApplyDeltaOversizedTargetSafety(t *testing.T) {
+	basePayload := []byte("Base object content for delta test\n")
+	baseSize := int64(len(basePayload))
+
+	testCases := []struct {
+		name        string
+		targetSize  int64
+		expectError bool
+	}{
+		{
+			name:        "TargetSize equals DefaultMaxObjectSize",
+			targetSize:  object.DefaultMaxObjectSize,
+			expectError: true, // Will fail on size mismatch or instruction truncation, but MUST NOT panic
+		},
+		{
+			name:        "TargetSize equals DefaultMaxObjectSize + 1",
+			targetSize:  object.DefaultMaxObjectSize + 1,
+			expectError: true,
+		},
+		{
+			name:        "TargetSize is 100 MiB",
+			targetSize:  100 * 1024 * 1024,
+			expectError: true,
+		},
+		{
+			name:        "TargetSize is math.MaxInt64",
+			targetSize:  math.MaxInt64,
+			expectError: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("PANIC on %s: %v", tc.name, r)
+				}
+			}()
+
+			inst := append(encodeLEB128(baseSize), encodeLEB128(tc.targetSize)...)
+			_, err := ApplyDelta(basePayload, inst)
+			if tc.expectError && err == nil {
+				t.Errorf("expected error for %s, got nil", tc.name)
+			}
+		})
+	}
+}
+
+// Regression Test for SPEC-01: Pack entry declared size mismatch validation for OFS_DELTA
+func TestPackEntryDeclaredSizeMismatchDelta(t *testing.T) {
+	tempDir := t.TempDir()
+
+	basePayload := []byte("Base content for delta size mismatch test\n")
+	baseSize := int64(len(basePayload))
+	deltaInst := append(encodeLEB128(baseSize), encodeLEB128(baseSize)...)
+	deltaInst = append(deltaInst, 0x90, 0x00, byte(baseSize)) // copy base
+
+	var packBuf bytes.Buffer
+	packBuf.WriteString("PACK")
+	_ = binary.Write(&packBuf, binary.BigEndian, uint32(2))
+	_ = binary.Write(&packBuf, binary.BigEndian, uint32(2))
+
+	// Entry 1: Base Blob
+	baseHdr := encodePackEntryHeader(PackTypeBlob, int64(len(basePayload)))
+	packBuf.Write(baseHdr)
+	packBuf.Write(compressZlibData(basePayload))
+
+	// Entry 2: OFS_DELTA with mismatched declared size (declares 9999 bytes, but inflated delta instruction stream is much smaller)
+	entry2Offset := int64(packBuf.Len())
+	deltaComp := compressZlibData(deltaInst)
+	deltaHdr := encodePackEntryHeader(PackTypeOfsDelta, 9999) // Intentionally wrong declared size
+	packBuf.Write(deltaHdr)
+	packBuf.Write(encodeOfsOffset(entry2Offset - 12))
+	packBuf.Write(deltaComp)
+
+	packFile := filepath.Join(tempDir, "delta_size_mismatch.pack")
+	_ = os.WriteFile(packFile, finalizePack(packBuf.Bytes()), 0644)
+
+	res, err := ParsePackFile(packFile, 0, 0)
+	if err != nil {
+		t.Fatalf("ParsePackFile failed: %v", err)
+	}
+
+	foundSizeMismatchAnomaly := false
+	for _, a := range res.Anomalies {
+		if strings.Contains(a.Description, "inflated size mismatch") || strings.Contains(a.Description, "size mismatch") {
+			foundSizeMismatchAnomaly = true
+			break
+		}
+	}
+	if !foundSizeMismatchAnomaly {
+		t.Errorf("expected size mismatch anomaly for OFS_DELTA entry with incorrect declared size, got anomalies: %+v", res.Anomalies)
 	}
 }

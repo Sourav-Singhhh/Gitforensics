@@ -141,6 +141,12 @@ func RunScan(opts ScanOptions) (*ScanReport, error) {
 	if coverageGaps == nil {
 		coverageGaps = make([]CoverageGap, 0)
 	}
+	if historyIndex != nil {
+		coverageGaps = append(coverageGaps, historyIndex.CoverageGaps...)
+		if classification != nil {
+			classification.Anomalies = append(classification.Anomalies, historyIndex.Anomalies...)
+		}
+	}
 
 	// Unresolved missing/pack-only objects become coverage gaps (§14)
 	for _, uOID := range classification.UnresolvedOIDs {

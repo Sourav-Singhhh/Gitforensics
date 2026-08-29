@@ -367,8 +367,8 @@ func ParsePackFile(path string, maxObjectSize int64, maxDeltaDepth int) (*PackFi
 		inflated := inflatedBuf.Bytes()
 		entry.InflatedPayload = inflated
 
-		// Verify non-delta inflated size
-		if rawType >= 1 && rawType <= 4 {
+		// Verify inflated payload / delta instruction stream size against entry header declared size (§16)
+		if rawType >= 1 && rawType <= 7 && rawType != 5 {
 			if int64(len(inflated)) != size {
 				entry.SizeMismatchError = object.ErrPackObjectSizeMismatch
 			}
@@ -442,7 +442,7 @@ func ApplyDelta(basePayload, deltaInstructions []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if targetSize < 0 {
+	if targetSize < 0 || targetSize > object.DefaultMaxObjectSize {
 		return nil, object.ErrPackEntrySizeTooLarge
 	}
 
@@ -652,6 +652,10 @@ func ResolveDeltaChains(
 
 		// OFS_DELTA
 		if entry.Type == PackTypeOfsDelta {
+			if entry.SizeMismatchError != nil {
+				memo[entry.Offset] = &resolvedPayload{err: entry.SizeMismatchError}
+				return nil, "", entry.SizeMismatchError
+			}
 			if entry.ResolutionError != nil {
 				memo[entry.Offset] = &resolvedPayload{err: entry.ResolutionError}
 				return nil, "", entry.ResolutionError

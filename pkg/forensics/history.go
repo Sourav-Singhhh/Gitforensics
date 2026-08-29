@@ -2,9 +2,10 @@ package forensics
 
 import (
 	"fmt"
+	"gitforensics/pkg/object"
 	"gitforensics/pkg/parser"
 	"gitforensics/pkg/repository"
-	"path"
+	"gitforensics/pkg/traversal"
 	"time"
 )
 
@@ -17,12 +18,16 @@ type TreeEntryBlob struct {
 // HistoryIndex maps blob OIDs to all observed historical occurrences (§11).
 type HistoryIndex struct {
 	BlobOccurrences map[string][]Occurrence
+	CoverageGaps    []CoverageGap
+	Anomalies       []traversal.StructuralAnomaly
 }
 
 // BuildHistoryIndex walks all reachable commits to associate blob OIDs with file paths and commit metadata (§11).
 func BuildHistoryIndex(store repository.ObjectStore, reachableCommits map[string]bool) (*HistoryIndex, error) {
 	index := &HistoryIndex{
 		BlobOccurrences: make(map[string][]Occurrence),
+		CoverageGaps:    make([]CoverageGap, 0),
+		Anomalies:       make([]traversal.StructuralAnomaly, 0),
 	}
 
 	// Cache to memoize tree expansion: treeOID -> []TreeEntryBlob
@@ -31,7 +36,17 @@ func BuildHistoryIndex(store repository.ObjectStore, reachableCommits map[string
 	var expandTree func(treeOID string, currentPath string, depth int) ([]TreeEntryBlob, error)
 	expandTree = func(treeOID string, currentPath string, depth int) ([]TreeEntryBlob, error) {
 		if depth > 1000 {
-			return nil, nil
+			index.CoverageGaps = append(index.CoverageGaps, CoverageGap{
+				Type:        "treeDepthLimitExceeded",
+				Target:      treeOID,
+				Description: fmt.Sprintf("tree %s exceeds maximum history traversal depth of 1000", treeOID),
+			})
+			index.Anomalies = append(index.Anomalies, traversal.StructuralAnomaly{
+				Type:        traversal.AnomalyRecursionDepthExceeded,
+				Location:    treeOID,
+				Description: fmt.Sprintf("tree %s exceeds maximum history traversal depth of 1000", treeOID),
+			})
+			return nil, object.ErrMaxTreeDepthExceeded
 		}
 
 		obj, err := store.Get(treeOID)
@@ -49,7 +64,7 @@ func BuildHistoryIndex(store repository.ObjectStore, reachableCommits map[string
 			entryName := string(entry.Name)
 			entryPath := entryName
 			if currentPath != "" {
-				entryPath = path.Join(currentPath, entryName)
+				entryPath = currentPath + "/" + entryName
 			}
 
 			switch entry.Mode {

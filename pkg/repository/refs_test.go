@@ -249,3 +249,60 @@ func TestSymbolicRefCycle(t *testing.T) {
 		t.Fatalf("expected ErrSymbolicRefCycle, got %v", err)
 	}
 }
+
+// Regression Test for SEC-02: Symbolic reference path traversal safety
+func TestSymbolicRefPathTraversalSafety(t *testing.T) {
+	tempDir := t.TempDir()
+	gitDir := filepath.Join(tempDir, ".git")
+	headsDir := filepath.Join(gitDir, "refs", "heads")
+	_ = os.MkdirAll(headsDir, 0755)
+
+	// Write an outside file
+	secretOutsideFile := filepath.Join(tempDir, "outside_secret.txt")
+	_ = os.WriteFile(secretOutsideFile, []byte("3333333333333333333333333333333333333333\n"), 0644)
+
+	repo := &Repository{
+		WorktreeRoot: tempDir,
+		GitDir:       gitDir,
+		CommonDir:    gitDir,
+		IsBare:       false,
+	}
+
+	maliciousRefs := []string{
+		"../../outside_secret.txt",
+		"../../../outside_secret.txt",
+		"refs/../../outside_secret.txt",
+		"refs/heads/../../outside_secret.txt",
+		"/absolute/path/to/secret",
+		`..\..\outside_secret.txt`,
+		`C:\outside_secret.txt`,
+		"not_refs/branch",
+	}
+
+	for _, malRef := range maliciousRefs {
+		t.Run("SymbolicRef_"+malRef, func(t *testing.T) {
+			_, err := ResolveSymbolicRef(repo, malRef, 10)
+			if err == nil {
+				t.Errorf("expected error for malicious symbolic ref %q, got nil", malRef)
+			}
+		})
+	}
+
+	// Also verify HEAD with malicious target is rejected
+	headPath := filepath.Join(gitDir, "HEAD")
+	_ = os.WriteFile(headPath, []byte("ref: ../outside_secret.txt\n"), 0644)
+	oid, _, err := ResolveHEAD(repo)
+	if err == nil && oid == "3333333333333333333333333333333333333333" {
+		t.Errorf("CRITICAL TRAVERSAL: ResolveHEAD read outside .git directory via relative symbolic ref!")
+	}
+
+	// Normal valid ref MUST continue to resolve properly
+	validOID := "4444444444444444444444444444444444444444"
+	_ = os.WriteFile(filepath.Join(headsDir, "main"), []byte(validOID+"\n"), 0644)
+	_ = os.WriteFile(headPath, []byte("ref: refs/heads/main\n"), 0644)
+
+	resolvedOID, isUnborn, err := ResolveHEAD(repo)
+	if err != nil || isUnborn || resolvedOID != validOID {
+		t.Errorf("valid HEAD resolution failed: oid=%s, isUnborn=%v, err=%v", resolvedOID, isUnborn, err)
+	}
+}

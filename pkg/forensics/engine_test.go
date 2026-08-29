@@ -323,3 +323,131 @@ func TestMinConfidenceFiltering(t *testing.T) {
 		t.Errorf("expected AllFindings to retain all 1 finding, got %d", len(report.AllFindings))
 	}
 }
+
+// Regression Test for SPEC-03: Raw tree entry names are not collapsed by path.Clean
+func TestRawTreeNamePathFidelity(t *testing.T) {
+	tempDir := t.TempDir()
+	gitDir := filepath.Join(tempDir, ".git")
+	headsDir := filepath.Join(gitDir, "refs", "heads")
+	_ = os.MkdirAll(headsDir, 0755)
+
+	synthAKIA := "AKIA" + "0123456789ABCDEF"
+	secretBlobPayload := []byte("aws_key = \"" + synthAKIA + "\"\n")
+	blobOID := writeLooseObject(t, gitDir, object.TypeBlob, secretBlobPayload)
+	bBlob, _ := hex.DecodeString(blobOID)
+
+	// Tree 1 (inner): has entry named ".." and entry named "."
+	var innerTreeBuf bytes.Buffer
+	innerTreeBuf.WriteString("100644 ..\x00")
+	innerTreeBuf.Write(bBlob)
+	innerTreeOID := writeLooseObject(t, gitDir, object.TypeTree, innerTreeBuf.Bytes())
+	bInner, _ := hex.DecodeString(innerTreeOID)
+
+	// Tree 2 (outer root): has entry named "dir" pointing to inner tree
+	var outerTreeBuf bytes.Buffer
+	outerTreeBuf.WriteString("40000 dir\x00")
+	outerTreeBuf.Write(bInner)
+	outerTreeOID := writeLooseObject(t, gitDir, object.TypeTree, outerTreeBuf.Bytes())
+
+	commitPayload := []byte(fmt.Sprintf(
+		"tree %s\nauthor Alice <alice@example.com> 1700000000 +0000\ncommitter Alice <alice@example.com> 1700000000 +0000\n\nCommit with raw dot names\n",
+		outerTreeOID,
+	))
+	commitOID := writeLooseObject(t, gitDir, object.TypeCommit, commitPayload)
+
+	_ = os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0644)
+	_ = os.WriteFile(filepath.Join(headsDir, "main"), []byte(commitOID+"\n"), 0644)
+
+	report, err := RunScan(ScanOptions{
+		RepoPath: tempDir,
+	})
+	if err != nil {
+		t.Fatalf("RunScan failed: %v", err)
+	}
+
+	if len(report.Findings) == 0 {
+		t.Fatalf("expected finding for secret in raw dot tree")
+	}
+
+	f := report.Findings[0]
+	if len(f.Occurrences) == 0 {
+		t.Fatalf("expected occurrences for finding")
+	}
+
+	// The path MUST be "dir/.." exactly, NOT collapsed to "." by path.Clean
+	expectedPath := "dir/.."
+	if f.Occurrences[0].Path != expectedPath {
+		t.Errorf("expected occurrence path to preserve exact tree name %q, got %q", expectedPath, f.Occurrences[0].Path)
+	}
+}
+
+type mockDepthStore struct {
+	commitObj *object.Object
+	treeObj   *object.Object
+}
+
+func (m *mockDepthStore) Get(oid string) (*object.Object, error) {
+	if oid == "1111111111111111111111111111111111111111" {
+		return m.commitObj, nil
+	}
+	if oid == "2222222222222222222222222222222222222222" {
+		return m.treeObj, nil
+	}
+	return nil, object.ErrObjectNotFound
+}
+
+func (m *mockDepthStore) Exists(oid string) bool {
+	return oid == "1111111111111111111111111111111111111111" || oid == "2222222222222222222222222222222222222222"
+}
+
+// Regression Test for SPEC-02: Exceeding history depth limit surfaces an anomaly and coverage gap
+func TestHistoryDepthLimitExceeded(t *testing.T) {
+	commitOID := "1111111111111111111111111111111111111111"
+	treeOID := "2222222222222222222222222222222222222222"
+
+	bTree, _ := hex.DecodeString(treeOID)
+	var treeBuf bytes.Buffer
+	treeBuf.WriteString("40000 sub\x00")
+	treeBuf.Write(bTree)
+
+	commitPayload := []byte(fmt.Sprintf(
+		"tree %s\nauthor Alice <alice@example.com> 1700000000 +0000\ncommitter Alice <alice@example.com> 1700000000 +0000\n\nDeep commit\n",
+		treeOID,
+	))
+
+	mockStore := &mockDepthStore{
+		commitObj: &object.Object{
+			ID:      commitOID,
+			Type:    object.TypeCommit,
+			Size:    int64(len(commitPayload)),
+			Payload: commitPayload,
+		},
+		treeObj: &object.Object{
+			ID:      treeOID,
+			Type:    object.TypeTree,
+			Size:    int64(treeBuf.Len()),
+			Payload: treeBuf.Bytes(),
+		},
+	}
+
+	reachableCommits := map[string]bool{commitOID: true}
+	index, err := BuildHistoryIndex(mockStore, reachableCommits)
+	if err != nil {
+		t.Fatalf("BuildHistoryIndex failed: %v", err)
+	}
+
+	if len(index.CoverageGaps) == 0 && len(index.Anomalies) == 0 {
+		t.Errorf("expected coverage gaps or anomalies when history depth exceeds limit, got none")
+	}
+
+	foundGap := false
+	for _, g := range index.CoverageGaps {
+		if g.Type == "treeDepthLimitExceeded" {
+			foundGap = true
+			break
+		}
+	}
+	if !foundGap {
+		t.Errorf("expected treeDepthLimitExceeded coverage gap, got gaps: %+v", index.CoverageGaps)
+	}
+}
