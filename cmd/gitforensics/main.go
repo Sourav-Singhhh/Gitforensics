@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gitforensics/pkg/detect"
 	"gitforensics/pkg/forensics"
+	"io"
 	"os"
 	"strings"
 )
@@ -132,26 +133,26 @@ func parseCLIArgs(args []string) (*cliConfig, error) {
 	return cfg, nil
 }
 
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprint(os.Stderr, Usage)
-		os.Exit(2)
+func runCLI(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprint(stderr, Usage)
+		return 2
 	}
 
-	cfg, err := parseCLIArgs(os.Args[1:])
+	cfg, err := parseCLIArgs(args)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n\n%s", err, Usage)
-		os.Exit(2)
+		fmt.Fprintf(stderr, "Error: %v\n\n%s", err, Usage)
+		return 2
 	}
 
 	switch cfg.command {
 	case "version":
-		fmt.Printf("gitforensics %s\n", Version)
-		os.Exit(0)
+		fmt.Fprintf(stdout, "gitforensics %s\n", Version)
+		return 0
 
 	case "help":
-		fmt.Print(Usage)
-		os.Exit(0)
+		fmt.Fprint(stdout, Usage)
+		return 0
 
 	case "scan":
 		opts := forensics.ScanOptions{
@@ -160,7 +161,7 @@ func main() {
 		}
 
 		if !cfg.quiet && !cfg.jsonOutput {
-			fmt.Fprintf(os.Stderr, "Scanning repository at %s...\n", cfg.repoPath)
+			fmt.Fprintf(stderr, "Scanning repository at %s...\n", cfg.repoPath)
 		}
 
 		report, scanErr := forensics.RunScan(opts)
@@ -182,36 +183,36 @@ func main() {
 					FatalError:          &fatalMsg,
 				}
 				jsonBytes, _ := forensics.FormatJSON(&errReport)
-				os.Stdout.Write(jsonBytes)
+				stdout.Write(jsonBytes)
 			} else {
-				fmt.Fprintf(os.Stderr, "Fatal scan error: %v\n", scanErr)
+				fmt.Fprintf(stderr, "Fatal scan error: %v\n", scanErr)
 			}
-			os.Exit(2)
+			return 2
 		}
 
 		if cfg.jsonOutput {
 			jsonBytes, jsonErr := forensics.FormatJSON(report)
 			if jsonErr != nil {
-				fmt.Fprintf(os.Stderr, "JSON formatting error: %v\n", jsonErr)
-				os.Exit(3)
+				fmt.Fprintf(stderr, "JSON formatting error: %v\n", jsonErr)
+				return 3
 			}
-			os.Stdout.Write(jsonBytes)
+			stdout.Write(jsonBytes)
 		} else {
-			forensics.FormatHuman(os.Stdout, report, cfg.noColor)
+			forensics.FormatHuman(stdout, report, cfg.noColor)
 		}
 
 		// Exit code semantics (§13):
 		// 0 = zero total findings
 		// 1 = total findings > 0 (even if filtered from display)
 		if report.Summary.TotalFindingsCount > 0 {
-			os.Exit(1)
+			return 1
 		}
-		os.Exit(0)
+		return 0
 
 	case "explain":
 		if len(cfg.findingID) != 16 && len(cfg.findingID) != 64 {
-			fmt.Fprintf(os.Stderr, "Error: invalid finding ID %q; expected 16 or 64 hex characters\n", cfg.findingID)
-			os.Exit(2)
+			fmt.Fprintf(stderr, "Error: invalid finding ID %q; expected 16 or 64 hex characters\n", cfg.findingID)
+			return 2
 		}
 
 		res, explainErr := forensics.ExplainFinding(cfg.repoPath, cfg.findingID)
@@ -222,20 +223,26 @@ func main() {
 					"id":    cfg.findingID,
 				}
 				b, _ := json.MarshalIndent(errMap, "", "  ")
-				fmt.Println(string(b))
+				fmt.Fprintln(stdout, string(b))
 			} else {
-				fmt.Fprintf(os.Stderr, "Explain error: %v\n", explainErr)
+				fmt.Fprintf(stderr, "Explain error: %v\n", explainErr)
 			}
 			// Explain not-found returns exit 1 per §13
-			os.Exit(1)
+			return 1
 		}
 
 		if cfg.jsonOutput {
 			b, _ := json.MarshalIndent(res, "", "  ")
-			fmt.Println(string(b))
+			fmt.Fprintln(stdout, string(b))
 		} else {
-			forensics.FormatHumanExplain(os.Stdout, res, cfg.noColor)
+			forensics.FormatHumanExplain(stdout, res, cfg.noColor)
 		}
-		os.Exit(0)
+		return 0
 	}
+
+	return 2
+}
+
+func main() {
+	os.Exit(runCLI(os.Args[1:], os.Stdout, os.Stderr))
 }
