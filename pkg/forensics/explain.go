@@ -1,11 +1,25 @@
 package forensics
 
 import (
+	"errors"
 	"fmt"
 	"gitforensics/pkg/detect"
 	"gitforensics/pkg/traversal"
 	"strings"
 )
+
+// ErrMalformedFindingID is returned when a finding ID is not 16 or 64 valid hex characters.
+var ErrMalformedFindingID = errors.New("malformed finding ID: expected 16 or 64 hexadecimal characters")
+
+func isHexOnly(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
 
 // ExplainResult encapsulates the complete explanation for a specific finding (§15).
 type ExplainResult struct {
@@ -18,8 +32,8 @@ type ExplainResult struct {
 // Invariant: Stateless execution; accepts both 16-character and 64-character finding IDs.
 func ExplainFinding(repoPath string, findingID string) (*ExplainResult, error) {
 	cleanID := strings.ToLower(strings.TrimSpace(findingID))
-	if len(cleanID) != 16 && len(cleanID) != 64 {
-		return nil, fmt.Errorf("invalid finding ID length (%d characters); expected 16 or 64 hex characters", len(cleanID))
+	if (len(cleanID) != 16 && len(cleanID) != 64) || !isHexOnly(cleanID) {
+		return nil, fmt.Errorf("%w (got %q)", ErrMalformedFindingID, findingID)
 	}
 
 	opts := ScanOptions{

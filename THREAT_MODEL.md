@@ -59,7 +59,7 @@ GitForensics operates as an air-gapped, read-only forensic analysis tool.
 ### 2.4 Credential & Information Leakage
 - **Threat:** Scanner accidentally reveals raw secrets, sensitive tokens, or private keys in logs, terminal stdout, or JSON reports.
 - **Mitigations:**
-  - **Centralized Redaction Engine:** High-entropy candidates and API tokens are masked (e.g. `AKIA****************`).
+  - **Centralized Redaction Engine:** Standard secret tokens preserve up to 4 characters of prefix and suffix separated by `...` intermediate masking (e.g. `AKIA...CDEF`), with short tokens masked entirely (`...`).
   - **PEM Zero-Reveal Guarantee:** Private key blocks are unconditionally replaced with `[REDACTED PRIVATE KEY]`, exposing 0 bytes of key material.
   - **Diagnostic Stream Isolation:** Informational logs go strictly to `stderr`. `stdout` contains only sanitized human reports or pure JSON.
 

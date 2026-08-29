@@ -9,7 +9,6 @@ import (
 	"gitforensics/pkg/detect"
 	"gitforensics/pkg/forensics"
 	"gitforensics/pkg/object"
-	"gitforensics/pkg/traversal"
 	"os"
 	"path/filepath"
 	"strings"
@@ -274,15 +273,22 @@ func TestContract6_ExplainRoundTrip(t *testing.T) {
 // Vector 7: Malformed explain ID rejection (§18)
 func TestContract7_MalformedExplainID(t *testing.T) {
 	repoDir := setupCleanRepo(t)
-	var stdout, stderr bytes.Buffer
 
-	// Malformed length (e.g. 5 chars)
-	code := runCLI([]string{"explain", "abc12", "--repo", repoDir}, &stdout, &stderr)
-	if code != 2 {
-		t.Errorf("expected exit code 2 for malformed explain ID, got %d", code)
+	testCases := []string{
+		"abc12",            // invalid length (5 chars)
+		"0123456789ghijkl", // 16 chars with non-hex 'g'-'l'
+		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdegz", // 64 chars with non-hex 'g', 'z'
 	}
-	if !strings.Contains(stderr.String(), "invalid finding ID") {
-		t.Errorf("expected error message in stderr, got: %s", stderr.String())
+
+	for _, malformedID := range testCases {
+		var stdout, stderr bytes.Buffer
+		code := runCLI([]string{"explain", malformedID, "--repo", repoDir}, &stdout, &stderr)
+		if code != 2 {
+			t.Errorf("expected exit code 2 for malformed explain ID %q, got %d", malformedID, code)
+		}
+		if !strings.Contains(stderr.String(), "invalid finding ID") && !strings.Contains(stderr.String(), "malformed finding ID") {
+			t.Errorf("expected error message in stderr for %q, got: %s", malformedID, stderr.String())
+		}
 	}
 }
 
@@ -440,7 +446,28 @@ func TestContract13_TimelineNullDiscipline(t *testing.T) {
 
 	// For a finding from a commit with hard-failed timestamp, Timeline should be nil (serialized as null in JSON)
 	f := report.Findings[0]
-	if f.Exposure != traversal.StateActive && f.Exposure != traversal.StateHistorical {
-		t.Logf("Exposure: %s", f.Exposure)
+	if f.Timeline != nil {
+		t.Errorf("expected finding timeline to be null for commit with malformed timestamp, got: %+v", f.Timeline)
+	}
+
+	// Verify that the JSON output explicitly contains "timeline": null (field-presence discipline §18)
+	var rawJSON map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &rawJSON); err != nil {
+		t.Fatalf("failed to parse JSON report: %v", err)
+	}
+	findingsList, ok := rawJSON["findings"].([]interface{})
+	if !ok || len(findingsList) == 0 {
+		t.Fatalf("expected non-empty findings list in JSON")
+	}
+	firstFinding, ok := findingsList[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected finding object in JSON")
+	}
+	val, exists := firstFinding["timeline"]
+	if !exists {
+		t.Errorf("expected 'timeline' field to be present in JSON")
+	}
+	if val != nil {
+		t.Errorf("expected 'timeline' field in JSON to be null, got %v", val)
 	}
 }

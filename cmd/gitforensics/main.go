@@ -2,13 +2,36 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"gitforensics/pkg/detect"
 	"gitforensics/pkg/forensics"
+	"gitforensics/pkg/object"
 	"io"
 	"os"
 	"strings"
 )
+
+func isHexOnly(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+func isInvalidRepoError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, object.ErrRepositoryNotFound) || os.IsNotExist(err) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "repository not found") || strings.Contains(msg, "not a git repository") || strings.Contains(msg, "does not exist") || strings.Contains(msg, "no such file or directory")
+}
 
 const (
 	Version = "0.1.0-dev"
@@ -187,7 +210,10 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 			} else {
 				fmt.Fprintf(stderr, "Fatal scan error: %v\n", scanErr)
 			}
-			return 2
+			if isInvalidRepoError(scanErr) {
+				return 2
+			}
+			return 3
 		}
 
 		if cfg.jsonOutput {
@@ -210,13 +236,27 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		return 0
 
 	case "explain":
-		if len(cfg.findingID) != 16 && len(cfg.findingID) != 64 {
+		if (len(cfg.findingID) != 16 && len(cfg.findingID) != 64) || !isHexOnly(cfg.findingID) {
 			fmt.Fprintf(stderr, "Error: invalid finding ID %q; expected 16 or 64 hex characters\n", cfg.findingID)
 			return 2
 		}
 
 		res, explainErr := forensics.ExplainFinding(cfg.repoPath, cfg.findingID)
 		if explainErr != nil {
+			if errors.Is(explainErr, forensics.ErrMalformedFindingID) || isInvalidRepoError(explainErr) {
+				if cfg.jsonOutput {
+					errMap := map[string]string{
+						"error": explainErr.Error(),
+						"id":    cfg.findingID,
+					}
+					b, _ := json.MarshalIndent(errMap, "", "  ")
+					fmt.Fprintln(stdout, string(b))
+				} else {
+					fmt.Fprintf(stderr, "Error: %v\n", explainErr)
+				}
+				return 2
+			}
+
 			if cfg.jsonOutput {
 				errMap := map[string]string{
 					"error": explainErr.Error(),

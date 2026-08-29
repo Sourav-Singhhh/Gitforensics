@@ -316,3 +316,41 @@ func TestDeterministicSorting(t *testing.T) {
 		t.Errorf("slices must be sorted")
 	}
 }
+
+func TestDuplicateStructuralAnomalyDeduplication(t *testing.T) {
+	repoDir := t.TempDir()
+	gitDir := filepath.Join(repoDir, ".git")
+	_ = os.MkdirAll(filepath.Join(gitDir, "refs", "heads"), 0755)
+
+	// Create commit with malformed timestamp
+	commitPayload := []byte("tree 0000000000000000000000000000000000000000\nauthor Alice <alice@example.com> NOT_A_TIMESTAMP +0000\ncommitter Alice <alice@example.com> NOT_A_TIMESTAMP +0000\n\nMalformed commit\n")
+	commitOID := writeLooseObject(t, gitDir, object.TypeCommit, commitPayload)
+
+	_ = os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0644)
+	_ = os.WriteFile(filepath.Join(gitDir, "refs", "heads", "main"), []byte(commitOID+"\n"), 0644)
+
+	repo, err := repository.Discover(repoDir)
+	if err != nil {
+		t.Fatalf("Discover failed: %v", err)
+	}
+
+	store, _, _, err := repository.NewRepositoryStore(repo.GitDir, repo.CommonDir, 0)
+	if err != nil {
+		t.Fatalf("NewRepositoryStore failed: %v", err)
+	}
+
+	res, err := ClassifyRepository(repo, store, DefaultTraversalLimits())
+	if err != nil {
+		t.Fatalf("ClassifyRepository failed: %v", err)
+	}
+
+	// Verify that anomalies are deduplicated (no duplicate entries)
+	anomalyCount := make(map[string]int)
+	for _, a := range res.Anomalies {
+		key := fmt.Sprintf("%s|%s|%s", a.Type, a.Location, a.Description)
+		anomalyCount[key]++
+		if anomalyCount[key] > 1 {
+			t.Errorf("duplicate anomaly detected for key %q (count=%d)", key, anomalyCount[key])
+		}
+	}
+}

@@ -177,6 +177,17 @@ func ClassifyRepository(
 		unresolvedOIDs = append(unresolvedOIDs, oid)
 	}
 
+	// Deduplicate anomalies deterministically by (Type, Location, Description)
+	dedupedAnomalies := make([]StructuralAnomaly, 0, len(allAnomalies))
+	seenAnomalyKeys := make(map[string]bool, len(allAnomalies))
+	for _, a := range allAnomalies {
+		key := fmt.Sprintf("%s|%s|%s", a.Type, a.Location, a.Description)
+		if !seenAnomalyKeys[key] {
+			seenAnomalyKeys[key] = true
+			dedupedAnomalies = append(dedupedAnomalies, a)
+		}
+	}
+
 	// Sort all result sets deterministically by OID
 	sort.Strings(activeBlobs)
 	sort.Strings(historicalBlobs)
@@ -188,6 +199,6 @@ func ClassifyRepository(
 		HistoricalBlobs: historicalBlobs,
 		ZombieBlobs:     zombieBlobs,
 		UnresolvedOIDs:  unresolvedOIDs,
-		Anomalies:       allAnomalies,
+		Anomalies:       dedupedAnomalies,
 	}, nil
 }

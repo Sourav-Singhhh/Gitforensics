@@ -12,13 +12,14 @@ import (
 	"os"
 )
 
-// Pack constants (§16, §17)
+// Pack constants (§16, §17, §19)
 const (
 	PackMagic                  = "PACK"
 	SupportedPackVersion       = 2
 	DefaultMaxDeltaDepth       = 50
-	MaxEntryHeaderContinuation = 9  // Max continuation bytes for entry header size
-	MaxOfsOffsetContinuation   = 10 // Max continuation bytes for OFS_DELTA base offset
+	DefaultMaxPackFileSize     = 512 * 1024 * 1024 // 512 MiB safety ceiling (§19)
+	MaxEntryHeaderContinuation = 9                 // Max continuation bytes for entry header size
+	MaxOfsOffsetContinuation   = 10                // Max continuation bytes for OFS_DELTA base offset
 	MaxCopyInstructionSize     = 65536
 
 	// Pack Object Types (§16)
@@ -94,13 +95,33 @@ func (c *countingByteReader) Read(p []byte) (int, error) {
 }
 
 // ParsePackFile parses a Git PACK version 2 container, extracts non-delta and OFS_DELTA objects,
-// verifies pack checksums, and resolves delta chains (§16, §17, §18).
+// verifies pack checksums, and resolves delta chains (§16, §17, §18, §19).
 func ParsePackFile(path string, maxObjectSize int64, maxDeltaDepth int) (*PackFileResult, error) {
 	if maxObjectSize <= 0 {
 		maxObjectSize = object.DefaultMaxObjectSize
 	}
 	if maxDeltaDepth <= 0 {
 		maxDeltaDepth = DefaultMaxDeltaDepth
+	}
+
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if fi.Size() > DefaultMaxPackFileSize {
+		return &PackFileResult{
+			Path:         path,
+			Objects:      make(map[string]*object.Object),
+			ObjectList:   make([]*object.Object, 0),
+			CoverageGaps: []PackCoverageGap{},
+			Anomalies: []PackAnomaly{
+				{
+					Type:        "PACK_TOO_LARGE",
+					Location:    path,
+					Description: fmt.Sprintf("pack file size (%d bytes) exceeds safety ceiling (%d bytes)", fi.Size(), DefaultMaxPackFileSize),
+				},
+			},
+		}, nil
 	}
 
 	data, err := os.ReadFile(path)
@@ -225,11 +246,13 @@ func ParsePackFile(path string, maxObjectSize int64, maxDeltaDepth int) (*PackFi
 		// Handle OFS_DELTA base offset
 		if rawType == PackTypeOfsDelta {
 			if currentOffset >= packDataEnd {
+				entry.ResolutionError = object.ErrTruncatedOfsDeltaOffset
 				result.Anomalies = append(result.Anomalies, PackAnomaly{
 					Type:        "PACK_TRUNCATED_OR_CORRUPTED",
 					Location:    fmt.Sprintf("%s:%d", path, entryStartOffset),
 					Description: "truncated OFS_DELTA offset",
 				})
+				rawEntries = append(rawEntries, entry)
 				break
 			}
 
@@ -264,11 +287,13 @@ func ParsePackFile(path string, maxObjectSize int64, maxDeltaDepth int) (*PackFi
 			}
 
 			if ofsTruncated {
+				entry.ResolutionError = object.ErrTruncatedOfsDeltaOffset
 				result.Anomalies = append(result.Anomalies, PackAnomaly{
 					Type:        "PACK_TRUNCATED_OR_CORRUPTED",
 					Location:    fmt.Sprintf("%s:%d", path, entryStartOffset),
 					Description: "truncated OFS_DELTA offset",
 				})
+				rawEntries = append(rawEntries, entry)
 				break
 			}
 

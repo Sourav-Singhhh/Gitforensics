@@ -500,3 +500,51 @@ func TestUnsupportedRefDeltaCoverageGap(t *testing.T) {
 		t.Errorf("expected coverage gap type unresolvedPackOnly, got %s", res.CoverageGaps[0].Type)
 	}
 }
+
+func TestTruncatedOfsDeltaOffsetRecovery(t *testing.T) {
+	tempDir := t.TempDir()
+
+	basePayload := []byte("Initial Base Content for OFS Recovery\n")
+	baseOID := object.ComputeEnvelopeSHA1(object.TypeBlob, int64(len(basePayload)), basePayload)
+
+	var packBuf bytes.Buffer
+	packBuf.WriteString("PACK")
+	_ = binary.Write(&packBuf, binary.BigEndian, uint32(2))
+	_ = binary.Write(&packBuf, binary.BigEndian, uint32(2))
+
+	// Entry 1: Base Blob (valid)
+	baseHdr := encodePackEntryHeader(PackTypeBlob, int64(len(basePayload)))
+	baseComp := compressZlibData(basePayload)
+	packBuf.Write(baseHdr)
+	packBuf.Write(baseComp)
+
+	// Entry 2: OFS_DELTA with truncated continuation byte (has MSB set 0x80 but runs off file)
+	deltaHdr := encodePackEntryHeader(PackTypeOfsDelta, 10)
+	packBuf.Write(deltaHdr)
+	packBuf.WriteByte(0x80) // MSB set indicating continuation, but no further bytes follow
+
+	packFile := filepath.Join(tempDir, "truncated_ofs.pack")
+	_ = os.WriteFile(packFile, finalizePack(packBuf.Bytes()), 0644)
+
+	res, err := ParsePackFile(packFile, 0, 0)
+	if err != nil {
+		t.Fatalf("ParsePackFile failed: %v", err)
+	}
+
+	// Valid base blob MUST be preserved and resolved
+	if res.Objects[baseOID] == nil {
+		t.Errorf("expected base blob %s to be resolved despite truncated delta entry", baseOID)
+	}
+
+	// Truncated OFS delta must be recorded as an anomaly
+	foundTruncatedAnomaly := false
+	for _, a := range res.Anomalies {
+		if strings.Contains(a.Description, "truncated OFS_DELTA") {
+			foundTruncatedAnomaly = true
+			break
+		}
+	}
+	if !foundTruncatedAnomaly {
+		t.Errorf("expected truncated OFS_DELTA anomaly to be recorded")
+	}
+}

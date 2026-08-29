@@ -310,7 +310,45 @@ make reproducible-build
 ## 16. Honest Limitations & Operational Scope
 
 - **Not a Secret Revocation Engine:** GitForensics proves whether a secret exists and is recoverable in Git storage; it does not check with remote SaaS providers whether the credential is currently active or revoked.
+- **Reflog Boundary:** Reflog files located in `.git/logs/**` are transient local client logs outside the formal Git DAG reachability model. GitForensics models reachability strictly through canonical references (`refs/**` and `HEAD`). Objects referenced solely by reflogs are accurately identified as `ZOMBIE` objects because they physically persist on disk without being reachable in repository history.
 - **REF_DELTA Support:** `OBJ_REF_DELTA` (type 7) pack entries are flagged as coverage gaps (`unresolvedPackOnly`) rather than resolved.
+- **Packfile Size Limit:** Single packfile safety ceiling is set to 512 MiB; oversized packs are recorded as coverage gaps without crashing.
 - **SHA-256 Object Format:** GitForensics currently supports standard SHA-1 Git repositories.
 - **Single-Worktree Scope:** Analyzes the target worktree specified. Linked worktrees sharing object storage are traversed in the context of the target worktree's `HEAD`.
 - **Heuristic Boundaries:** Entropy and context scoring minimize false positives, but cannot substitute for cryptographic proof of key validity.
+
+---
+
+## 17. Quick Start & Demo Walkthrough
+
+Follow these steps to demonstrate GitForensics on a repository in under 2 minutes:
+
+### 1. Build the Binary
+```bash
+make build
+```
+The compiled standalone binary is placed at `bin/gitforensics`.
+
+### 2. Run a Full Forensic Scan
+```bash
+./bin/gitforensics scan /path/to/target-repository
+```
+GitForensics will discover the repository, parse loose and packfile storage, compute reachability, detect secrets, and present an ANSI-formatted exposure table.
+
+### 3. Output Machine-Readable JSON
+```bash
+./bin/gitforensics scan /path/to/target-repository --json
+```
+Produces an atomic, schema-compliant JSON document on `stdout` suitable for CI/CD pipelines and SIEM ingestion.
+
+### 4. Explain a Specific Finding
+```bash
+./bin/gitforensics explain <finding-id> --repo /path/to/target-repository
+```
+Resolves the finding by 16-hex short ID or 64-hex SHA-256 digest, providing immediate forensic context and remediation instructions based on whether the credential is `ACTIVE`, `HISTORICAL`, or `ZOMBIE`.
+
+### 5. Filter by Minimum Confidence Tier
+```bash
+./bin/gitforensics scan /path/to/target-repository --min-confidence high
+```
+Displays only `high` and `critical` confidence findings while preserving exit code `1` if any secrets were identified.
