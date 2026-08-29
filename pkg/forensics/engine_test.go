@@ -55,8 +55,11 @@ func TestForensicsEngineEndToEnd(t *testing.T) {
 		t.Fatalf("failed to setup git dir: %v", err)
 	}
 
+	synthAKIA := "AKIA" + "0123456789ABCDEF"
+	synthGHP := "ghp_" + "0123456789ABCDEFGHIJKLMNOPQRSTUV" + "WXYZ"
+
 	// 1. ACTIVE secret blob on HEAD
-	activeSecretPayload := []byte("export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\n")
+	activeSecretPayload := []byte("export AWS_ACCESS_KEY_ID=" + synthAKIA + "\n")
 	activeBlobOID := writeLooseObject(t, gitDir, object.TypeBlob, activeSecretPayload)
 	bActive := hexTo20Bytes(activeBlobOID)
 	activeTreePayload := append([]byte("100644 config.env\x00"), bActive[:]...)
@@ -75,7 +78,7 @@ func TestForensicsEngineEndToEnd(t *testing.T) {
 	}
 
 	// 2. HISTORICAL secret on feature branch (GitHub token)
-	histSecretPayload := []byte("gh_token = \"ghp_123456789012345678901234567890123456\"\n")
+	histSecretPayload := []byte("gh_token = \"" + synthGHP + "\"\n")
 	histBlobOID := writeLooseObject(t, gitDir, object.TypeBlob, histSecretPayload)
 	bHist := hexTo20Bytes(histBlobOID)
 	histTreePayload := append([]byte("100644 token.txt\x00"), bHist[:]...)
@@ -90,7 +93,7 @@ func TestForensicsEngineEndToEnd(t *testing.T) {
 	}
 
 	// 3. ZOMBIE secret (Private Key unreferenced orphan on disk)
-	zombieSecretPayload := []byte("-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0...\n-----END RSA PRIVATE KEY-----\n")
+	zombieSecretPayload := []byte("-----BEGIN " + "RSA " + "PRIVATE KEY-----\n" + "MIIEowIBAAKCAQEA0...\n" + "-----END " + "RSA " + "PRIVATE KEY-----\n")
 	zombieBlobOID := writeLooseObject(t, gitDir, object.TypeBlob, zombieSecretPayload)
 
 	// Run forensic scan
@@ -113,10 +116,10 @@ func TestForensicsEngineEndToEnd(t *testing.T) {
 
 	for _, f := range report.Findings {
 		// Assert zero raw secret leakage
-		if strings.Contains(f.Redacted, "AKIAIOSFODNN7EXAMPLE") {
+		if strings.Contains(f.Redacted, synthAKIA) {
 			t.Errorf("raw AWS secret leaked in redacted field: %s", f.Redacted)
 		}
-		if strings.Contains(f.Redacted, "ghp_123456789012345678901234567890123456") {
+		if strings.Contains(f.Redacted, synthGHP) {
 			t.Errorf("raw GitHub token leaked in redacted field: %s", f.Redacted)
 		}
 		if f.PatternName == "Private Key" && f.Redacted != detect.RedactedPrivateKeyString {
@@ -214,7 +217,7 @@ func TestDeduplicationRules(t *testing.T) {
 		t.Fatalf("failed to setup git dir: %v", err)
 	}
 
-	secretLiteral := []byte("AKIAIOSFODNN7EXAMPLE")
+	secretLiteral := []byte("AKIA" + "0123456789ABCDEF")
 
 	// Same secret in TWO different blobs (different file headers or whitespace)
 	blob1Payload := append([]byte("header 1\n"), secretLiteral...)

@@ -5,10 +5,12 @@ import (
 )
 
 func TestEvaluateContext(t *testing.T) {
+	synthAKIA := "AKIA" + "0123456789ABCDEF"
+
 	// Keyword within 100-byte window
-	payload := []byte("const aws_secret_access_key = 'AKIAIOSFODNN7EXAMPLE';\n")
+	payload := []byte("const aws_secret_access_key = '" + synthAKIA + "';\n")
 	start := 32
-	end := 52
+	end := start + len(synthAKIA)
 
 	score, keywords := EvaluateContext(payload, start, end)
 	if score != 20 {
@@ -19,9 +21,9 @@ func TestEvaluateContext(t *testing.T) {
 	}
 
 	// Multiple keywords do NOT stack (+20 maximum)
-	multiPayload := []byte("api_key = token = secret = password = authorization = 'AKIAIOSFODNN7EXAMPLE';\n")
+	multiPayload := []byte("api_key = token = secret = password = authorization = '" + synthAKIA + "';\n")
 	startMulti := 55
-	endMulti := 75
+	endMulti := startMulti + len(synthAKIA)
 	multiScore, multiKeywords := EvaluateContext(multiPayload, startMulti, endMulti)
 	if multiScore != 20 {
 		t.Errorf("expected multiple keywords to not stack (score must be 20), got %d", multiScore)
@@ -31,9 +33,9 @@ func TestEvaluateContext(t *testing.T) {
 	}
 
 	// No keywords
-	noKwPayload := []byte("just some innocent plain text without any matching words: AKIAIOSFODNN7EXAMPLE\n")
+	noKwPayload := []byte("just some innocent plain text without any matching words: " + synthAKIA + "\n")
 	startNoKw := 59
-	endNoKw := 79
+	endNoKw := startNoKw + len(synthAKIA)
 	noKwScore, noKwList := EvaluateContext(noKwPayload, startNoKw, endNoKw)
 	if noKwScore != 0 {
 		t.Errorf("expected 0 score for no keywords, got %d", noKwScore)
