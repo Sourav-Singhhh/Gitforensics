@@ -124,6 +124,11 @@ func NewRepositoryStore(
 				Location:    packPath,
 				Description: fmt.Sprintf("failed to parse packfile %s: %v", fname, pErr),
 			})
+			store.coverageGaps = append(store.coverageGaps, PackCoverageGap{
+				Type:        "unreadablePack",
+				Location:    packPath,
+				Description: fmt.Sprintf("failed to parse packfile %s: %v", fname, pErr),
+			})
 			continue
 		}
 

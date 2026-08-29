@@ -1,7 +1,9 @@
 ================================================================================
 GitForensics — Empirical Dependency and Subprocess Verification Proof
 ================================================================================
-Generated fresh from the repository source code to provide empirical verification
+Generated: 2026-08-30T00:25:00Z
+Repository Commit: 917b467785260de1f8d9b3e272624b3dfb9bf364
+Generated from the repository source code to provide empirical verification
 that GitForensics contains ZERO third-party runtime dependencies and ZERO
 subprocess execution APIs.
 
@@ -22,123 +24,124 @@ gitforensics
 --------------------------------------------------------------------------------
 3. go list -deps ./... (Complete Standard Library Dependency Tree)
 --------------------------------------------------------------------------------
-bufio
-bytes
-cmp
-compress/flate
-compress/zlib
-crypto
-crypto/cipher
-crypto/fips140
-crypto/internal/boring
-crypto/internal/boring/sig
-crypto/internal/constanttime
-crypto/internal/entropy/v1.0.0
-crypto/internal/fips140
-crypto/internal/fips140/aes
-crypto/internal/fips140/aes/gcm
-crypto/internal/fips140/alias
-crypto/internal/fips140/check
-crypto/internal/fips140/drbg
-crypto/internal/fips140/hmac
-crypto/internal/fips140/sha256
-crypto/internal/fips140/sha3
-crypto/internal/fips140/sha512
-crypto/internal/fips140/subtle
-crypto/internal/fips140deps/byteorder
-crypto/internal/fips140deps/cpu
-crypto/internal/fips140deps/godebug
-crypto/internal/fips140deps/time
-crypto/internal/fips140only
-crypto/internal/impl
-crypto/internal/sysrand
-crypto/sha1
-crypto/sha256
-crypto/subtle
-encoding
-encoding/base64
-encoding/binary
-encoding/hex
-encoding/json
-errors
-fmt
-gitforensics/cmd/gitforensics
-gitforensics/pkg/detect
-gitforensics/pkg/forensics
-gitforensics/pkg/object
-gitforensics/pkg/parser
-gitforensics/pkg/repository
-gitforensics/pkg/traversal
-hash
-hash/adler32
+internal/goarch
+unsafe
 internal/abi
-internal/asan
-internal/bisect
+internal/unsafeheader
+internal/cpu
 internal/bytealg
 internal/byteorder
 internal/chacha8rand
 internal/coverage/rtcov
-internal/cpu
-internal/filepathlite
-internal/fmtsort
-internal/goarch
-internal/godebug
 internal/godebugs
 internal/goexperiment
 internal/goos
-internal/msan
-internal/oserror
-internal/poll
 internal/profilerecord
-internal/race
-internal/reflectlite
 internal/runtime/atomic
 internal/runtime/exithook
 internal/runtime/gc
-internal/runtime/gc/scan
-internal/runtime/maps
-internal/runtime/math
-internal/runtime/pprof/label
 internal/runtime/sys
+internal/runtime/gc/scan
+internal/asan
+internal/msan
+internal/race
+internal/runtime/math
+internal/runtime/maps
+internal/runtime/pprof/label
 internal/runtime/syscall/windows
+math/bits
 internal/strconv
 internal/stringslite
-internal/structs
+internal/trace/tracev2
+runtime
+internal/reflectlite
+errors
+sync/atomic
 internal/sync
 internal/synctest
-internal/syscall/execenv
-internal/syscall/windows
-internal/syscall/windows/registry
-internal/syscall/windows/sysdll
-internal/testlog
-internal/trace/tracev2
-internal/unsafeheader
-io
-io/fs
-iter
-math
-math/bits
-os
-path
-path/filepath
-reflect
-regexp
-regexp/syntax
-runtime
-slices
-sort
-strconv
-strings
 sync
-sync/atomic
-syscall
-time
+io
+iter
 unicode
-unicode/utf16
 unicode/utf8
-unsafe
+bytes
+cmp
+encoding
+slices
+strconv
+encoding/base64
+math
+reflect
+internal/fmtsort
+internal/oserror
+internal/syscall/windows/sysdll
+structs
+unicode/utf16
+syscall
+internal/syscall/windows
+path
+internal/bisect
+internal/godebug
+internal/syscall/windows/registry
+time
+io/fs
+internal/filepathlite
+internal/poll
+internal/syscall/execenv
+internal/testlog
+os
+fmt
+strings
+encoding/json
+path/filepath
+sort
+regexp/syntax
+regexp
+gitforensics/pkg/detect
+hash
+crypto
+crypto/internal/fips140deps/godebug
+crypto/internal/fips140
+crypto/internal/fips140/alias
+crypto/internal/fips140deps/byteorder
+crypto/internal/fips140deps/cpu
+crypto/internal/impl
+crypto/internal/fips140/sha256
+crypto/internal/constanttime
+crypto/internal/fips140/subtle
+crypto/internal/fips140/sha3
+crypto/internal/fips140/sha512
+crypto/internal/fips140/hmac
+crypto/internal/fips140/check
+crypto/internal/fips140/aes
+crypto/internal/fips140deps/time
+crypto/internal/entropy/v1.0.0
+crypto/internal/sysrand
+crypto/internal/fips140/drbg
+crypto/internal/fips140/aes/gcm
+crypto/fips140
+crypto/internal/fips140only
+crypto/subtle
+crypto/cipher
+crypto/internal/boring/sig
+crypto/internal/boring
+crypto/sha256
+encoding/hex
+bufio
+compress/flate
+encoding/binary
+hash/adler32
+compress/zlib
+crypto/sha1
+gitforensics/pkg/object
+gitforensics/pkg/parser
+gitforensics/pkg/repository
+gitforensics/pkg/traversal
+gitforensics/pkg/forensics
+gitforensics/cmd/gitforensics
 
-[Verified: All dependency paths resolve strictly to the Go standard library or internal packages]
+[Verified: All dependency paths resolve strictly to the Go standard library or
+internal packages. No external modules present.]
 
 --------------------------------------------------------------------------------
 4. go vet ./... (Static Analysis Verification)
@@ -161,16 +164,28 @@ Exit code: 0
 --------------------------------------------------------------------------------
 7. Subprocess Security Audit
 --------------------------------------------------------------------------------
-Command: grep -R "os/exec\|exec\.Command\|exec\.CommandContext" --include="*.go" ./cmd ./pkg
+Patterns audited: os/exec | exec.Command | exec.CommandContext | os.StartProcess | syscall.Exec
+Scope: ./cmd/**/*.go and ./pkg/**/*.go
 Result: 0 occurrences found across all Go source files.
 Policy: Strict Zero-Subprocess Compliance Confirmed.
+
+--------------------------------------------------------------------------------
+8. Network Access Audit
+--------------------------------------------------------------------------------
+Patterns audited: import "net" | net/http | net.Dial
+Scope: ./cmd/**/*.go and ./pkg/**/*.go
+Result: 0 occurrences found across all Go source files.
+Policy: Zero-Network / Air-Gapped Compliance Confirmed.
 
 ================================================================================
 Reproducible Build Empirical Result
 ================================================================================
+Generated: 2026-08-30T00:24:54Z
+Commit:    917b467785260de1f8d9b3e272624b3dfb9bf364
+
 Build Command 1: CGO_ENABLED=0 GOFLAGS=-trimpath go build -o bin/gitforensics_1 ./cmd/gitforensics
 Build Command 2: CGO_ENABLED=0 GOFLAGS=-trimpath go build -o bin/gitforensics_2 ./cmd/gitforensics
-SHA-256 Hash 1:  e815b3ecfe6f904a105ddf36513536d4d1a16a730c708a86bc7312309e6aa7e3
-SHA-256 Hash 2:  e815b3ecfe6f904a105ddf36513536d4d1a16a730c708a86bc7312309e6aa7e3
+SHA-256 Hash 1:  dd524da12c147431b779281faf027506f824166aedd01465663c0a40feb7f0a5
+SHA-256 Hash 2:  dd524da12c147431b779281faf027506f824166aedd01465663c0a40feb7f0a5
 Verification:    BIT-FOR-BIT IDENTICAL (Reproducible Build Verified)
 ================================================================================

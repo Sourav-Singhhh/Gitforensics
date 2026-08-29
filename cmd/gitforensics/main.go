@@ -7,6 +7,7 @@ import (
 	"gitforensics/pkg/detect"
 	"gitforensics/pkg/forensics"
 	"gitforensics/pkg/object"
+	"gitforensics/pkg/traversal"
 	"io"
 	"os"
 	"strings"
@@ -202,7 +203,7 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 					},
 					Findings:            make([]forensics.Finding, 0),
 					CoverageGaps:        make([]forensics.CoverageGap, 0),
-					StructuralAnomalies: nil,
+					StructuralAnomalies: make([]traversal.StructuralAnomaly, 0),
 					FatalError:          &fatalMsg,
 				}
 				jsonBytes, _ := forensics.FormatJSON(&errReport)

@@ -110,10 +110,16 @@ func ParsePackFile(path string, maxObjectSize int64, maxDeltaDepth int) (*PackFi
 	}
 	if fi.Size() > DefaultMaxPackFileSize {
 		return &PackFileResult{
-			Path:         path,
-			Objects:      make(map[string]*object.Object),
-			ObjectList:   make([]*object.Object, 0),
-			CoverageGaps: []PackCoverageGap{},
+			Path:       path,
+			Objects:    make(map[string]*object.Object),
+			ObjectList: make([]*object.Object, 0),
+			CoverageGaps: []PackCoverageGap{
+				{
+					Type:        "packTooLarge",
+					Location:    path,
+					Description: fmt.Sprintf("pack file size (%d bytes) exceeds safety ceiling (%d bytes)", fi.Size(), DefaultMaxPackFileSize),
+				},
+			},
 			Anomalies: []PackAnomaly{
 				{
 					Type:        "PACK_TOO_LARGE",

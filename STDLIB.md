@@ -13,7 +13,7 @@
 | **Git Commit Parsing** | `github.com/go-git/go-git/v5` | `bytes`, `fmt`, `strconv`, `strings`, `time` | [`pkg/parser/commit.go`](pkg/parser/commit.go) |
 | **PACK v2 Container Parsing** | `github.com/go-git/go-git/v5/plumbing/format/packfile` | `bytes`, `compress/zlib`, `crypto/sha1`, `encoding/binary`, `encoding/hex`, `io` | [`pkg/repository/pack.go`](pkg/repository/pack.go) |
 | **OFS_DELTA Reconstruction** | `github.com/go-git/go-git/v5` | `bytes`, `encoding/binary`, `fmt`, `io` | [`pkg/repository/pack.go`](pkg/repository/pack.go) |
-| **Graph Reachability & DAG** | `gonum.org/v1/gonum/graph` | Native Go `map[string]bool` visited sets, recursion bounding | [`pkg/traversal/reachable.go`](pkg/traversal/reachability.go) |
+| **Graph Reachability & DAG** | `gonum.org/v1/gonum/graph` | Native Go `map[string]bool` visited sets, recursion bounding | [`pkg/traversal/reachability.go`](pkg/traversal/reachability.go) |
 | **Physical Dangling Discovery** | External `git fsck` / `git rev-list --lost-found` | `path/filepath`, `os.ReadDir`, `bytes` | [`pkg/traversal/dangling.go`](pkg/traversal/dangling.go) |
 | **Secret Pattern Matching** | `github.com/trufflesecurity/trufflehog` / `gitleaks` | `regexp`, `strings`, `bytes` | [`pkg/detect/detector.go`](pkg/detect/detector.go) |
 | **Shannon Entropy Calculation**| `github.com/montanaflynn/stats` | `math.Log2`, native byte frequency arrays | [`pkg/detect/entropy.go`](pkg/detect/entropy.go) |

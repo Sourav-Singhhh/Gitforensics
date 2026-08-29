@@ -216,7 +216,7 @@ gitforensics version
 
 ## 14. JSON Contract
 
-When `--json` is specified, `stdout` produces a machine-readable document adhering to `schemaVersion: "1.0"`:
+When `--json` is specified, `stdout` produces a machine-readable document adhering to `schemaVersion: "1.0"`. All field names below exactly match the implementation:
 
 ```json
 {
@@ -235,46 +235,56 @@ When `--json` is specified, `stdout` produces a machine-readable document adheri
   "scan": {
     "startTime": "2026-08-29T22:00:00Z",
     "durationMs": 42,
-    "minConfidence": "low"
+    "minConfidence": "LOW"
   },
   "summary": {
+    "totalBlobsScanned": 42,
+    "activeBlobsCount": 3,
+    "historicalBlobsCount": 1,
+    "zombieBlobsCount": 0,
     "totalFindingsCount": 1,
     "displayedFindingsCount": 1,
-    "activeCount": 1,
-    "historicalCount": 0,
-    "zombieCount": 0,
-    "criticalCount": 1,
-    "highCount": 0,
-    "mediumCount": 0,
-    "lowCount": 0
+    "criticalFindingsCount": 1,
+    "highFindingsCount": 0,
+    "mediumFindingsCount": 0,
+    "lowFindingsCount": 0
   },
   "findings": [
     {
       "id": "a1b2c3d4e5f60718",
-      "fullDigest": "a1b2c3d4e5f60718293847561029384756102938475610293847561029384756",
-      "ruleId": "aws_access_key",
-      "pattern": "Amazon AWS Access Key ID",
-      "confidence": {
-        "score": 0.95,
-        "tier": "critical"
-      },
-      "exposure": "ACTIVE",
+      "fullDigest": "a1b2c3d4e5f607180123456789abcdef0123456789abcdef0123456789abcdef",
       "blobId": "9f8e7d6c5b4a39281701928374655647382910ab",
-      "redacted": "AKIA****************",
+      "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "exposureState": "ACTIVE",
+      "patternName": "AWS Access Key",
+      "category": "aws",
+      "confidenceScore": 95,
+      "confidenceTier": "CRITICAL",
+      "redacted": "AKIA...CDEF",
+      "lineNumber": 12,
+      "byteOffset": 347,
+      "isBinary": false,
       "occurrences": [
         {
-          "path": "config/aws.env",
-          "commitId": "1234567890abcdef1234567890abcdef12345678",
-          "isCurrentHead": true
+          "commitSha": "1234567890abcdef1234567890abcdef12345678",
+          "commitTimestamp": 1788000000,
+          "commitDate": "2026-01-01T12:00:00Z",
+          "author": "Developer <dev@example.com>",
+          "path": "config/aws.env"
         }
       ],
       "timeline": {
-        "introducedCommit": "1234567890abcdef1234567890abcdef12345678",
-        "introducedDate": "2026-01-01T12:00:00Z",
-        "introducedAuthor": "Developer <dev@example.com>",
-        "lastSeenCommit": "1234567890abcdef1234567890abcdef12345678",
-        "lastSeenDate": "2026-01-01T12:00:00Z"
-      }
+        "earliestObservedCommit": "1234567890abcdef1234567890abcdef12345678",
+        "earliestObservedDate": "2026-01-01T12:00:00Z",
+        "earliestObservedAuthor": "Developer <dev@example.com>",
+        "evidenceNote": "Secret remains active and reachable from current HEAD."
+      },
+      "evidenceSignals": [
+        { "rule": "Strong Pattern Match", "score": 45, "detail": "Matched AWS Access Key (aws)" },
+        { "rule": "Shannon Entropy Analysis", "score": 25, "detail": "Entropy: 5.1 bits/byte" },
+        { "rule": "Context Keywords", "score": 20, "detail": "Nearby keywords: [secret]" },
+        { "rule": "Path Sensitivity", "score": 10, "detail": "Path signal score: 10" }
+      ]
     }
   ],
   "coverageGaps": [],
@@ -283,26 +293,60 @@ When `--json` is specified, `stdout` produces a machine-readable document adheri
 }
 ```
 
+> **Field notes:**
+> - `timeline` is `null` (not an empty object) when the commit timestamp is malformed and no timeline data can be derived.
+> - `coverageGaps` and `structuralAnomalies` are always present as arrays (never omitted), even when empty.
+> - `fatalError` is `null` on a successful scan; a string message on a fatal scan failure.
+> - `confidenceTier` values: `"LOW"`, `"MEDIUM"`, `"HIGH"`, `"CRITICAL"`.
+> - `exposureState` values: `"ACTIVE"`, `"HISTORICAL"`, `"ZOMBIE"`.
+
 ---
 
 ## 15. Verification, Build, and Testing
 
 ### Build
+
+**Linux / macOS (with `make`):**
 ```bash
 make build
-# Binary output generated at bin/gitforensics
+# Binary output: bin/gitforensics
+```
+
+**Windows (PowerShell) or any platform without `make`:**
+```powershell
+go build -o bin/gitforensics ./cmd/gitforensics
+# Binary output: bin/gitforensics (Windows also accepts this path)
 ```
 
 ### Run Test Suite
+
+**Linux / macOS:**
 ```bash
 make test
-# Executes all unit, adversarial, integration, and output contract tests
+```
+
+**Windows / direct Go:**
+```powershell
+go test -count=1 -v ./...
 ```
 
 ### Reproducible Build Verification
+
+**Linux / macOS:**
 ```bash
 make reproducible-build
 # Compiles twice with CGO_ENABLED=0 GOFLAGS=-trimpath and verifies identical SHA-256 hashes
+```
+
+**Windows (PowerShell):**
+```powershell
+$env:CGO_ENABLED = "0"; $env:GOFLAGS = "-trimpath"
+go build -o bin/gitforensics_1.exe ./cmd/gitforensics
+go build -o bin/gitforensics_2.exe ./cmd/gitforensics
+$h1 = (Get-FileHash bin/gitforensics_1.exe -Algorithm SHA256).Hash
+$h2 = (Get-FileHash bin/gitforensics_2.exe -Algorithm SHA256).Hash
+Write-Host "Build 1: $h1"; Write-Host "Build 2: $h2"
+if ($h1 -eq $h2) { Write-Host "Reproducible build: SUCCESS" } else { Write-Host "Reproducible build: FAILED" }
 ```
 
 ---
@@ -324,10 +368,18 @@ make reproducible-build
 Follow these steps to demonstrate GitForensics on a repository in under 2 minutes:
 
 ### 1. Build the Binary
+
+**Linux / macOS:**
 ```bash
 make build
 ```
-The compiled standalone binary is placed at `bin/gitforensics`.
+
+**Windows (PowerShell) or without `make`:**
+```powershell
+go build -o bin/gitforensics ./cmd/gitforensics
+```
+
+The compiled standalone binary is placed at `bin/gitforensics` (or `bin\gitforensics.exe` on Windows when using the default output name).
 
 ### 2. Run a Full Forensic Scan
 ```bash
