@@ -412,3 +412,63 @@ func TestMaxObjectSizeEnforcement(t *testing.T) {
 		t.Fatalf("expected ErrObjectTooLarge, got %v", err)
 	}
 }
+
+// 22. Stored/uncompressed DEFLATE blocks followed by trailing bytes
+func TestStoredBlockTrailingBytes(t *testing.T) {
+	payload := []byte("uncompressed stored block test payload\n")
+	rawEnvelope := append([]byte("blob 39\x00"), payload...)
+
+	// Compress using zlib with NoCompression (stored blocks)
+	var buf bytes.Buffer
+	w, err := zlib.NewWriterLevel(&buf, zlib.NoCompression)
+	if err != nil {
+		t.Fatalf("failed to create uncompressed zlib writer: %v", err)
+	}
+	_, _ = w.Write(rawEnvelope)
+	_ = w.Close()
+	compressed := buf.Bytes()
+
+	trailingJunk := []byte("EXTRA_GARBAGE_AFTER_STORED_BLOCKS_1234567890")
+	withTrailing := append(compressed, trailingJunk...)
+
+	expectedSHA := ComputeEnvelopeSHA1(TypeBlob, 39, payload)
+	obj, err := DecodeLooseObjectBytes(withTrailing, expectedSHA, 0)
+	if err != nil {
+		t.Fatalf("unexpected error on stored block with trailing bytes: %v", err)
+	}
+
+	if obj.TrailingBytesCount != int64(len(trailingJunk)) {
+		t.Errorf("expected TrailingBytesCount=%d, got %d", len(trailingJunk), obj.TrailingBytesCount)
+	}
+	if !bytes.Equal(obj.Payload, payload) {
+		t.Errorf("payload mismatch: expected %q, got %q", payload, obj.Payload)
+	}
+	if obj.ComputedID != expectedSHA {
+		t.Errorf("computed SHA mismatch: expected %s, got %s", expectedSHA, obj.ComputedID)
+	}
+	if obj.IntegrityMismatch {
+		t.Errorf("expected IntegrityMismatch=false, got true")
+	}
+}
+
+// 23. Decompression bomb bounded execution (high compression ratio, small maxObjectSize)
+func TestDecompressionBombBounded(t *testing.T) {
+	// Create repetitive 100 KB payload that compresses to ~100 bytes
+	repetitivePayload := bytes.Repeat([]byte("A"), 100*1024)
+	rawEnvelope := append([]byte("blob 102400\x00"), repetitivePayload...)
+
+	var buf bytes.Buffer
+	w, err := zlib.NewWriterLevel(&buf, zlib.BestCompression)
+	if err != nil {
+		t.Fatalf("failed to create zlib writer: %v", err)
+	}
+	_, _ = w.Write(rawEnvelope)
+	_ = w.Close()
+	compressed := buf.Bytes()
+
+	// With maxObjectSize = 1024, decompression must terminate early with ErrObjectTooLarge
+	_, err = DecodeLooseObjectBytes(compressed, "", 1024)
+	if !errors.Is(err, ErrObjectTooLarge) {
+		t.Fatalf("expected ErrObjectTooLarge on decompression bomb, got %v", err)
+	}
+}

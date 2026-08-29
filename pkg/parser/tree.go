@@ -61,6 +61,9 @@ type TreeEntry struct {
 	Mode TreeMode
 
 	// Name is the raw, opaque byte slice of the entry filename (do not assume UTF-8).
+	// It is a subslice of the underlying tree payload provided to ParseTree.
+	// Callers retaining TreeEntry beyond the lifetime of the payload buffer must
+	// copy Name if the underlying buffer is reused.
 	Name []byte
 
 	// OID is the raw 20-byte binary hash following the entry's NUL terminator.

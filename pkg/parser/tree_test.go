@@ -234,3 +234,27 @@ func TestUnknownTreeMode(t *testing.T) {
 		t.Errorf("expected UnknownMode=true for mode 100664")
 	}
 }
+
+// 11. Exact duplicate tree entry names (parse succeeds, IsCanonicallySorted == false)
+func TestExactDuplicateTreeEntries(t *testing.T) {
+	oid1 := hexTo20Bytes("1111111111111111111111111111111111111111")
+	oid2 := hexTo20Bytes("2222222222222222222222222222222222222222")
+
+	var payload []byte
+	payload = append(payload, []byte("100644 duplicate.txt\x00")...)
+	payload = append(payload, oid1[:]...)
+	payload = append(payload, []byte("100644 duplicate.txt\x00")...)
+	payload = append(payload, oid2[:]...)
+
+	tree, err := ParseTree(payload)
+	if err != nil {
+		t.Fatalf("unexpected error on duplicate tree entries: %v", err)
+	}
+	if len(tree.Entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(tree.Entries))
+	}
+	// Identical names cannot be strictly increasing in canonical order
+	if tree.IsCanonicallySorted {
+		t.Errorf("expected IsCanonicallySorted=false for exact duplicate entries")
+	}
+}

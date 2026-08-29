@@ -28,7 +28,11 @@ type Commit struct {
 	Author       Identity
 	Committer    Identity
 	ExtraHeaders []Header
-	Message      []byte
+
+	// Message is a subslice of the underlying commit payload provided to ParseCommit.
+	// It is not copied. Callers retaining Commit beyond the lifetime of the payload
+	// buffer must copy Message if the underlying buffer is reused.
+	Message []byte
 }
 
 // validateTimezone checks that a timezone string follows "+HHMM" or "-HHMM" format (§7).
@@ -79,9 +83,20 @@ func parseIdentity(line string, isAuthor bool) (Identity, error) {
 	tsStr := rest[prevSpace+1:]
 	rest = rest[:prevSpace]
 
-	// Validate timestamp is integer and check overflow (hard-fail per §7)
+	// Validate timestamp contains decimal digits only (strictly non-negative per §7)
+	if len(tsStr) == 0 {
+		return Identity{}, object.ErrCommitMalformedTimestamp
+	}
+	for i := 0; i < len(tsStr); i++ {
+		c := tsStr[i]
+		if c < '0' || c > '9' {
+			return Identity{}, object.ErrCommitMalformedTimestamp
+		}
+	}
+
+	// Validate timestamp integer range / overflow (hard-fail per §7)
 	ts, err := strconv.ParseInt(tsStr, 10, 64)
-	if err != nil {
+	if err != nil || ts < 0 {
 		return Identity{}, object.ErrCommitMalformedTimestamp
 	}
 

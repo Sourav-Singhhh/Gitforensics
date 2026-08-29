@@ -147,7 +147,7 @@ func TestCommitTimestampOverflow(t *testing.T) {
 	}
 }
 
-// 16. Negative timestamp (valid pre-1970 date)
+// 16. Negative timestamp is rejected as malformed -> ErrCommitMalformedTimestamp
 func TestCommitNegativeTimestamp(t *testing.T) {
 	rawCommit := []byte("tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\n" +
 		"author Ancient Developer <ancient@example.com> -12345678 +0000\n" +
@@ -155,12 +155,9 @@ func TestCommitNegativeTimestamp(t *testing.T) {
 		"\n" +
 		"Pre-1970 commit\n")
 
-	commit, err := ParseCommit(rawCommit)
-	if err != nil {
-		t.Fatalf("unexpected error on negative timestamp: %v", err)
-	}
-	if commit.Author.Timestamp != -12345678 {
-		t.Errorf("expected timestamp -12345678, got %d", commit.Author.Timestamp)
+	_, err := ParseCommit(rawCommit)
+	if !errors.Is(err, object.ErrCommitMalformedTimestamp) {
+		t.Fatalf("expected ErrCommitMalformedTimestamp for negative timestamp, got %v", err)
 	}
 }
 

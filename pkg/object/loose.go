@@ -36,21 +36,20 @@ func LooseObjectPath(gitDir string, oid string) (string, error) {
 	if err := ValidateOID(oid); err != nil {
 		return "", err
 	}
-	prefix := oid[:2]
-	rest := oid[2:]
-	if prefix == "in" || prefix == "pa" {
-		// Explicit sanity check against object directory special names (info, pack)
-		if prefix == "info" || prefix == "pack" {
-			return "", ErrInvalidOID
-		}
-	}
-	return filepath.Join(gitDir, "objects", prefix, rest), nil
+	return filepath.Join(gitDir, "objects", oid[:2], oid[2:]), nil
 }
 
 // CountingByteReader implements both io.Reader and io.ByteReader while tracking the
 // exact number of bytes consumed from the underlying buffer.
-// When passed to compress/flate / compress/zlib, the decompressor uses io.ByteReader
-// directly without wrapping in a buffering reader, ensuring exact zlib EOF tracking.
+//
+// Design note:
+// In Go's standard library compress/flate and compress/zlib, when the underlying reader
+// implements io.ByteReader, the decompressor reads bytes directly via ReadByte() without
+// wrapping the input in an internal bufio.Reader read-ahead buffer.
+// This allows exact consumed-byte accounting at the logical end of the zlib stream,
+// correctly determining trailing bytes for both compressed and uncompressed/stored
+// DEFLATE blocks. Trailing bytes are measured from the exact underlying position
+// (len(rawBytes) - countingReader.BytesRead()), protected by regression tests.
 type CountingByteReader struct {
 	buf []byte
 	pos int

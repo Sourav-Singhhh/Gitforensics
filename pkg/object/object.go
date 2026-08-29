@@ -31,6 +31,8 @@ type Object struct {
 	Size int64
 
 	// Payload is the uncompressed, raw content of the object.
+	// Callers and consumers should treat this byte slice as owned by the Object
+	// and avoid modifying its contents in place.
 	Payload []byte
 
 	// ID is the 40-character lowercase hexadecimal OID (expected or path-derived).
