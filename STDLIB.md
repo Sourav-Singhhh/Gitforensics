@@ -42,7 +42,7 @@
 ### 2.3 Graph Reachability & Three-Way Classification (`pkg/traversal`)
 - **Third-Party Avoided:** Complex graph database libraries or `gonum/graph`.
 - **Go Stdlib Used:** `sort`, standard Go `map[string]bool` sets, slices.
-- **Implementation:** Traverses commit histories and tree hierarchies using three strictly isolated visited sets (`HeadReachable`, `AllReachable`, `AllOnDisk`). Evaluates set differences to produce deterministic `ACTIVE`, `HISTORICAL`, and `ZOMBIE` partitions in $O(N)$ time.
+- **Implementation:** Traverses commit histories and tree hierarchies using three strictly isolated visited sets (`HeadReachable`, `AllReachable`, `AllOnDisk`). Evaluates set differences to produce deterministic `ACTIVE`, `HISTORICAL`, and `ZOMBIE` partitions in $O(N)$ time. For `ZOMBIE` loose objects that have no connecting commit in reachable reference graphs, findings explicitly set `"occurrences": null` and `"timeline": null` in accordance with the JSON specification.
 
 ### 2.4 Multi-Signal Secret Detection Engine (`pkg/detect`)
 - **Third-Party Avoided:** `trufflehog`, `gitleaks`, third-party rule engines.

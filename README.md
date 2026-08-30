@@ -126,7 +126,7 @@ Every detected secret candidate is assigned exactly one exposure state:
 2. **`HISTORICAL` (Branch/Tag/Ref Exposure):**
    The secret is no longer in `HEAD`, but is reachable from another branch, tag, remote, or custom Git reference (`refs/**`). Anyone cloning the repository will download this object.
 3. **`ZOMBIE` (Dangling/Orphan Exposure):**
-   The secret blob is physically present on disk (in loose `.git/objects/` or supported packfiles) but is completely unreferenced by any current Git branch, tag, or ref. It is invisible to `git log` but directly recoverable from raw storage until `git gc --prune=now` deletes it.
+   The secret blob is physically present on disk (in loose `.git/objects/` or supported packfiles) but is completely unreferenced by any current Git branch, tag, or ref. It is invisible to `git log` but directly recoverable from raw storage until `git gc --prune=now` deletes it. *(Note: Because zombie objects are unreferenced by any commit DAG or tree, `"occurrences": null` and `"timeline": null` in JSON output, as there are no reachable commit pointers or file paths to attach.)*
 4. **`UNRESOLVED_PACK_ONLY` (Coverage Gap):**
    The object is referenced in the Git DAG but its payload could not be extracted (e.g. unsupported `REF_DELTA` or truncated pack). Unresolved objects are recorded as coverage gaps and are **never** classified as `ZOMBIE`.
 
@@ -292,6 +292,8 @@ When `--json` is specified, `stdout` produces a machine-readable document adheri
   "fatalError": null
 }
 ```
+
+> **ZOMBIE Findings Semantics:** For `ZOMBIE` findings, `"occurrences": null` and `"timeline": null` in the JSON report. Because zombie blobs are unreferenced by any reference-rooted commit graph or tree structure, there are no reachable commit SHAs, author identities, or file paths associated with the object. The blob is physically present in `.git/objects/` on disk and is forensic evidence directly addressable by `blobId`.
 
 > **Field notes:**
 > - `timeline` is `null` (not an empty object) when the commit timestamp is malformed and no timeline data can be derived.
