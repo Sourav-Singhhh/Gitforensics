@@ -228,7 +228,7 @@ func TestContract5_DeterministicFindingID(t *testing.T) {
 	}
 }
 
-// Vector 6: Explain round-trip identity (§18)
+// Vector 6: Explain round-trip identity with full field-by-field verification (§18)
 func TestContract6_ExplainRoundTrip(t *testing.T) {
 	repoDir, _, _ := setupSecretRepo(t)
 	var stdout, stderr bytes.Buffer
@@ -241,32 +241,72 @@ func TestContract6_ExplainRoundTrip(t *testing.T) {
 		t.Fatalf("expected findings in secret repo")
 	}
 
-	targetFinding := report.Findings[0]
+	for _, targetFinding := range report.Findings {
+		// 1. Test 16-hex short ID lookup
+		var expStdout, expStderr bytes.Buffer
+		code := runCLI([]string{"explain", targetFinding.ID, "--repo", repoDir, "--json"}, &expStdout, &expStderr)
+		if code != 0 {
+			t.Fatalf("explain with 16-hex ID failed: code=%d, stderr=%s", code, expStderr.String())
+		}
 
-	// 16-hex explain
-	var expStdout, expStderr bytes.Buffer
-	code := runCLI([]string{"explain", targetFinding.ID, "--repo", repoDir, "--json"}, &expStdout, &expStderr)
-	if code != 0 {
-		t.Fatalf("explain with 16-hex ID failed: code=%d, stderr=%s", code, expStderr.String())
-	}
+		var expResult forensics.ExplainResult
+		if err := json.Unmarshal(expStdout.Bytes(), &expResult); err != nil {
+			t.Fatalf("failed to unmarshal explain result: %v", err)
+		}
 
-	var expResult forensics.ExplainResult
-	if err := json.Unmarshal(expStdout.Bytes(), &expResult); err != nil {
-		t.Fatalf("failed to unmarshal explain result: %v", err)
-	}
+		// Comprehensive field-by-field verification
+		ef := expResult.Finding
+		if ef.ID != targetFinding.ID {
+			t.Errorf("explain ID mismatch: %s vs %s", ef.ID, targetFinding.ID)
+		}
+		if ef.FullDigest != targetFinding.FullDigest {
+			t.Errorf("explain FullDigest mismatch: %s vs %s", ef.FullDigest, targetFinding.FullDigest)
+		}
+		if ef.Category != targetFinding.Category {
+			t.Errorf("explain Category mismatch: %s vs %s", ef.Category, targetFinding.Category)
+		}
+		if ef.PatternName != targetFinding.PatternName {
+			t.Errorf("explain PatternName mismatch: %s vs %s", ef.PatternName, targetFinding.PatternName)
+		}
+		if ef.ConfidenceScore != targetFinding.ConfidenceScore {
+			t.Errorf("explain ConfidenceScore mismatch: %d vs %d", ef.ConfidenceScore, targetFinding.ConfidenceScore)
+		}
+		if ef.ConfidenceTier != targetFinding.ConfidenceTier {
+			t.Errorf("explain ConfidenceTier mismatch: %s vs %s", ef.ConfidenceTier, targetFinding.ConfidenceTier)
+		}
+		if ef.Exposure != targetFinding.Exposure {
+			t.Errorf("explain Exposure mismatch: %s vs %s", ef.Exposure, targetFinding.Exposure)
+		}
+		if ef.BlobID != targetFinding.BlobID {
+			t.Errorf("explain BlobID mismatch: %s vs %s", ef.BlobID, targetFinding.BlobID)
+		}
+		if ef.Redacted != targetFinding.Redacted {
+			t.Errorf("explain Redacted mismatch: %s vs %s", ef.Redacted, targetFinding.Redacted)
+		}
+		if ef.Fingerprint != targetFinding.Fingerprint {
+			t.Errorf("explain Fingerprint mismatch: %s vs %s", ef.Fingerprint, targetFinding.Fingerprint)
+		}
+		if len(ef.Occurrences) != len(targetFinding.Occurrences) {
+			t.Errorf("explain Occurrences length mismatch: %d vs %d", len(ef.Occurrences), len(targetFinding.Occurrences))
+		}
+		if expResult.RecoveryExplanation == "" {
+			t.Errorf("expected non-empty RecoveryExplanation")
+		}
 
-	if expResult.Finding.ID != targetFinding.ID {
-		t.Errorf("explain finding ID mismatch: %s vs %s", expResult.Finding.ID, targetFinding.ID)
-	}
-	if expResult.RecoveryExplanation == "" {
-		t.Errorf("expected non-empty RecoveryExplanation")
-	}
+		// 2. Test 64-hex full digest lookup
+		var expStdout64, expStderr64 bytes.Buffer
+		code64 := runCLI([]string{"explain", targetFinding.FullDigest, "--repo", repoDir, "--json"}, &expStdout64, &expStderr64)
+		if code64 != 0 {
+			t.Fatalf("explain with 64-hex digest failed: code=%d, stderr=%s", code64, expStderr64.String())
+		}
 
-	// 64-hex explain
-	var expStdout64, expStderr64 bytes.Buffer
-	code64 := runCLI([]string{"explain", targetFinding.FullDigest, "--repo", repoDir, "--json"}, &expStdout64, &expStderr64)
-	if code64 != 0 {
-		t.Fatalf("explain with 64-hex digest failed: code=%d, stderr=%s", code64, expStderr64.String())
+		var expResult64 forensics.ExplainResult
+		if err := json.Unmarshal(expStdout64.Bytes(), &expResult64); err != nil {
+			t.Fatalf("failed to unmarshal explain 64 result: %v", err)
+		}
+		if expResult64.Finding.ID != targetFinding.ID {
+			t.Errorf("explain 64 ID mismatch: %s vs %s", expResult64.Finding.ID, targetFinding.ID)
+		}
 	}
 }
 
@@ -292,38 +332,163 @@ func TestContract7_MalformedExplainID(t *testing.T) {
 	}
 }
 
-// Vector 8: Explain after repository mutation / not-found (§18)
-func TestContract8_ExplainNotFound(t *testing.T) {
-	repoDir := setupCleanRepo(t)
-	var stdout, stderr bytes.Buffer
+// Vector 8: Real repository mutation explain test (§18)
+func TestContract8_ExplainRealMutation(t *testing.T) {
+	tempDir := t.TempDir()
+	gitDir := filepath.Join(tempDir, ".git")
+	headsDir := filepath.Join(gitDir, "refs", "heads")
+	_ = os.MkdirAll(headsDir, 0755)
 
-	// Valid 16-hex format but nonexistent ID
-	nonExistentID := "0123456789abcdef"
-	code := runCLI([]string{"explain", nonExistentID, "--repo", repoDir}, &stdout, &stderr)
-	if code != 1 {
-		t.Errorf("expected exit code 1 for finding not found, got %d", code)
+	synthAKIA := "AKIA" + "0123456789ABCDEF"
+	secretPayload := []byte("aws_key = \"" + synthAKIA + "\"\n")
+	blobOID := testWriteLooseObject(t, gitDir, object.TypeBlob, secretPayload)
+	bBlob := testHexTo20Bytes(blobOID)
+	treePayload := append([]byte("100644 secret.env\x00"), bBlob[:]...)
+	treeOID := testWriteLooseObject(t, gitDir, object.TypeTree, treePayload)
+	commitPayload := []byte(fmt.Sprintf(
+		"tree %s\nauthor Alice <alice@example.com> 1700000000 +0000\ncommitter Alice <alice@example.com> 1700000000 +0000\n\nCommit with secret\n",
+		treeOID,
+	))
+	commitOID := testWriteLooseObject(t, gitDir, object.TypeCommit, commitPayload)
+
+	_ = os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0644)
+	_ = os.WriteFile(filepath.Join(headsDir, "main"), []byte(commitOID+"\n"), 0644)
+
+	// 1. Initial scan: finding is discovered
+	var stdout1, stderr1 bytes.Buffer
+	code1 := runCLI([]string{"scan", tempDir, "--json"}, &stdout1, &stderr1)
+	if code1 != 1 {
+		t.Fatalf("expected exit code 1 for secret repo, got %d", code1)
 	}
-	if !strings.Contains(stderr.String(), "not found") {
-		t.Errorf("expected 'not found' in stderr, got: %s", stderr.String())
+
+	var report1 forensics.ScanReport
+	if err := json.Unmarshal(stdout1.Bytes(), &report1); err != nil {
+		t.Fatalf("failed to unmarshal scan report: %v", err)
+	}
+	if len(report1.Findings) == 0 {
+		t.Fatalf("expected at least 1 finding in initial scan")
+	}
+	targetID := report1.Findings[0].ID
+
+	// 2. Mutate repository: delete the secret blob file and rewrite HEAD to a clean commit
+	blobPath := filepath.Join(gitDir, "objects", blobOID[:2], blobOID[2:])
+	_ = os.Remove(blobPath)
+
+	cleanPayload := []byte("Clean repository content.\n")
+	cleanBlobOID := testWriteLooseObject(t, gitDir, object.TypeBlob, cleanPayload)
+	bClean := testHexTo20Bytes(cleanBlobOID)
+	cleanTreePayload := append([]byte("100644 readme.txt\x00"), bClean[:]...)
+	cleanTreeOID := testWriteLooseObject(t, gitDir, object.TypeTree, cleanTreePayload)
+	cleanCommitPayload := []byte(fmt.Sprintf(
+		"tree %s\nauthor Alice <alice@example.com> 1700000001 +0000\ncommitter Alice <alice@example.com> 1700000001 +0000\n\nClean commit\n",
+		cleanTreeOID,
+	))
+	cleanCommitOID := testWriteLooseObject(t, gitDir, object.TypeCommit, cleanCommitPayload)
+	_ = os.WriteFile(filepath.Join(headsDir, "main"), []byte(cleanCommitOID+"\n"), 0644)
+
+	// 3. Explain the previous finding ID on the mutated repo in human mode
+	var expStdoutHuman, expStderrHuman bytes.Buffer
+	expCodeHuman := runCLI([]string{"explain", targetID, "--repo", tempDir}, &expStdoutHuman, &expStderrHuman)
+	if expCodeHuman != 1 {
+		t.Errorf("expected exit code 1 for mutated finding in human explain, got %d", expCodeHuman)
+	}
+	if !strings.Contains(expStderrHuman.String(), "not found") {
+		t.Errorf("expected 'not found' message in stderr, got: %s", expStderrHuman.String())
+	}
+	if strings.Contains(expStdoutHuman.String(), synthAKIA) || strings.Contains(expStderrHuman.String(), synthAKIA) {
+		t.Errorf("CRITICAL LEAK: raw secret appeared during explain on mutated repo")
+	}
+
+	// 4. Explain in JSON mode
+	var expStdoutJSON, expStderrJSON bytes.Buffer
+	expCodeJSON := runCLI([]string{"explain", targetID, "--repo", tempDir, "--json"}, &expStdoutJSON, &expStderrJSON)
+	if expCodeJSON != 1 {
+		t.Errorf("expected exit code 1 for mutated finding in JSON explain, got %d", expCodeJSON)
+	}
+	var errJSON map[string]string
+	if err := json.Unmarshal(expStdoutJSON.Bytes(), &errJSON); err != nil {
+		t.Fatalf("expected valid JSON error response on explain not-found, got: %s", expStdoutJSON.String())
+	}
+	if errJSON["id"] != targetID {
+		t.Errorf("expected id %q in JSON error, got %q", targetID, errJSON["id"])
+	}
+	if !strings.Contains(strings.ToLower(errJSON["error"]), "not found") {
+		t.Errorf("expected 'not found' in error message, got: %q", errJSON["error"])
 	}
 }
 
-// Vector 9: Corpus-wide raw secret non-leakage (§18)
+// Vector 9: Comprehensive multi-family raw secret non-leakage (§18)
 func TestContract9_CorpusWideRawSecretNonLeakage(t *testing.T) {
-	repoDir, rawAKIA, _ := setupSecretRepo(t)
+	tempDir := t.TempDir()
+	gitDir := filepath.Join(tempDir, ".git")
+	headsDir := filepath.Join(gitDir, "refs", "heads")
+	_ = os.MkdirAll(headsDir, 0755)
 
-	// Test in JSON mode
+	synthAKIA := "AKIA" + "0123456789ABCDEF"
+	synthGHP := "ghp_" + "0123456789ABCDEFGHIJKLMNOPQRSTUV" + "WXYZ"
+	synthSlack := "xoxb-" + "012345678901-" + "0123456789012-" + "0123456789abcdefghijklmn"
+	synthGeneric := "SECRET_KEY_" + "ABCDEF0123456789ABCDEF0123456789"
+	synthPEM := "-----BEGIN " + "RSA PRIVATE KEY-----\n" +
+		"MIIEowIBAAKCAQEA0syntheticTestFixtureKeyMaterialOnlyDoNotUse123456789\n" +
+		"-----END " + "RSA PRIVATE KEY-----\n"
+
+	rawSecrets := []string{synthAKIA, synthGHP, synthSlack, synthGeneric, "MIIEowIBAAKCAQEA0syntheticTestFixtureKeyMaterialOnlyDoNotUse123456789"}
+
+	multiSecretPayload := []byte(fmt.Sprintf(
+		"aws = %q\nghp = %q\nslack = %q\ngeneric = %q\npem = %q\n",
+		synthAKIA, synthGHP, synthSlack, synthGeneric, synthPEM,
+	))
+	blobOID := testWriteLooseObject(t, gitDir, object.TypeBlob, multiSecretPayload)
+	bBlob := testHexTo20Bytes(blobOID)
+	treePayload := append([]byte("100644 vault.env\x00"), bBlob[:]...)
+	treeOID := testWriteLooseObject(t, gitDir, object.TypeTree, treePayload)
+	commitPayload := []byte(fmt.Sprintf(
+		"tree %s\nauthor Alice <alice@example.com> 1700000000 +0000\ncommitter Alice <alice@example.com> 1700000000 +0000\n\nVault commit\n",
+		treeOID,
+	))
+	commitOID := testWriteLooseObject(t, gitDir, object.TypeCommit, commitPayload)
+
+	_ = os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0644)
+	_ = os.WriteFile(filepath.Join(headsDir, "main"), []byte(commitOID+"\n"), 0644)
+
+	// 1. Test in JSON mode
 	var stdoutJSON, stderrJSON bytes.Buffer
-	_ = runCLI([]string{"scan", repoDir, "--json"}, &stdoutJSON, &stderrJSON)
-	if strings.Contains(stdoutJSON.String(), rawAKIA) {
-		t.Errorf("CRITICAL LEAK: raw AWS AKIA appeared in scan --json output")
+	_ = runCLI([]string{"scan", tempDir, "--json"}, &stdoutJSON, &stderrJSON)
+	for _, sec := range rawSecrets {
+		if strings.Contains(stdoutJSON.String(), sec) {
+			t.Errorf("CRITICAL LEAK: raw secret %q appeared in scan --json stdout", sec)
+		}
+		if strings.Contains(stderrJSON.String(), sec) {
+			t.Errorf("CRITICAL LEAK: raw secret %q appeared in scan --json stderr", sec)
+		}
 	}
 
-	// Test in Human mode
+	// 2. Test in Human mode
 	var stdoutHuman, stderrHuman bytes.Buffer
-	_ = runCLI([]string{"scan", repoDir, "--no-color"}, &stdoutHuman, &stderrHuman)
-	if strings.Contains(stdoutHuman.String(), rawAKIA) {
-		t.Errorf("CRITICAL LEAK: raw AWS AKIA appeared in scan human output")
+	_ = runCLI([]string{"scan", tempDir, "--no-color"}, &stdoutHuman, &stderrHuman)
+	for _, sec := range rawSecrets {
+		if strings.Contains(stdoutHuman.String(), sec) {
+			t.Errorf("CRITICAL LEAK: raw secret %q appeared in scan human stdout", sec)
+		}
+		if strings.Contains(stderrHuman.String(), sec) {
+			t.Errorf("CRITICAL LEAK: raw secret %q appeared in scan human stderr", sec)
+		}
+	}
+
+	// 3. Test in Explain mode
+	var report forensics.ScanReport
+	_ = json.Unmarshal(stdoutJSON.Bytes(), &report)
+	for _, f := range report.Findings {
+		var expOut, expErr bytes.Buffer
+		_ = runCLI([]string{"explain", f.ID, "--repo", tempDir, "--json"}, &expOut, &expErr)
+		for _, sec := range rawSecrets {
+			if strings.Contains(expOut.String(), sec) {
+				t.Errorf("CRITICAL LEAK: raw secret %q appeared in explain JSON for %s", sec, f.ID)
+			}
+			if strings.Contains(expErr.String(), sec) {
+				t.Errorf("CRITICAL LEAK: raw secret %q appeared in explain stderr for %s", sec, f.ID)
+			}
+		}
 	}
 }
 
@@ -335,27 +500,52 @@ func TestContract10_PEMZeroReveal(t *testing.T) {
 	lines := strings.Split(rawPEM, "\n")
 	pemBody := lines[1]
 
+	// 1. Scan JSON
 	var stdoutJSON, stderrJSON bytes.Buffer
 	_ = runCLI([]string{"scan", repoDir, "--json"}, &stdoutJSON, &stderrJSON)
-
 	if strings.Contains(stdoutJSON.String(), pemBody) {
 		t.Errorf("CRITICAL LEAK: PEM key body appeared in scan JSON output")
+	}
+
+	// 2. Scan Human
+	var stdoutHuman, stderrHuman bytes.Buffer
+	_ = runCLI([]string{"scan", repoDir, "--no-color"}, &stdoutHuman, &stderrHuman)
+	if strings.Contains(stdoutHuman.String(), pemBody) {
+		t.Errorf("CRITICAL LEAK: PEM key body appeared in scan human output")
 	}
 
 	var report forensics.ScanReport
 	_ = json.Unmarshal(stdoutJSON.Bytes(), &report)
 
 	foundPEM := false
+	var pemFindingID string
 	for _, f := range report.Findings {
 		if strings.Contains(f.PatternName, "Private Key") || strings.Contains(f.Category, "private_key") {
 			foundPEM = true
+			pemFindingID = f.ID
 			if f.Redacted != detect.RedactedPrivateKeyString {
 				t.Errorf("expected exact placeholder %q for PEM key, got %q", detect.RedactedPrivateKeyString, f.Redacted)
 			}
 		}
 	}
 	if !foundPEM {
-		t.Errorf("expected PEM private key finding in report")
+		t.Fatalf("expected PEM private key finding in report")
+	}
+
+	// 3. Explain Human & JSON
+	var expHOut, expHErr bytes.Buffer
+	_ = runCLI([]string{"explain", pemFindingID, "--repo", repoDir, "--no-color"}, &expHOut, &expHErr)
+	if strings.Contains(expHOut.String(), pemBody) {
+		t.Errorf("CRITICAL LEAK: PEM key body appeared in explain human output")
+	}
+	if !strings.Contains(expHOut.String(), detect.RedactedPrivateKeyString) {
+		t.Errorf("expected exact %q in explain human output", detect.RedactedPrivateKeyString)
+	}
+
+	var expJOut, expJErr bytes.Buffer
+	_ = runCLI([]string{"explain", pemFindingID, "--repo", repoDir, "--json"}, &expJOut, &expJErr)
+	if strings.Contains(expJOut.String(), pemBody) {
+		t.Errorf("CRITICAL LEAK: PEM key body appeared in explain JSON output")
 	}
 }
 
@@ -381,31 +571,35 @@ func TestContract11_CoverageAndAnomaliesPresence(t *testing.T) {
 func TestContract12_DeterministicSorting(t *testing.T) {
 	repoDir, _, _ := setupSecretRepo(t)
 
-	var run1, run2 bytes.Buffer
-	var stderr bytes.Buffer
-
-	_ = runCLI([]string{"scan", repoDir, "--json"}, &run1, &stderr)
-	_ = runCLI([]string{"scan", repoDir, "--json"}, &run2, &stderr)
-
-	var report1, report2 forensics.ScanReport
-	if err := json.Unmarshal(run1.Bytes(), &report1); err != nil {
-		t.Fatalf("run1 unmarshal failed: %v", err)
-	}
-	if err := json.Unmarshal(run2.Bytes(), &report2); err != nil {
-		t.Fatalf("run2 unmarshal failed: %v", err)
+	var runs [][]byte
+	for i := 0; i < 5; i++ {
+		var stdout, stderr bytes.Buffer
+		_ = runCLI([]string{"scan", repoDir, "--json"}, &stdout, &stderr)
+		runs = append(runs, stdout.Bytes())
 	}
 
-	if report1.Summary != report2.Summary {
-		t.Errorf("summary mismatch across runs")
+	var baseReport forensics.ScanReport
+	if err := json.Unmarshal(runs[0], &baseReport); err != nil {
+		t.Fatalf("run 0 unmarshal failed: %v", err)
 	}
-	if len(report1.Findings) != len(report2.Findings) {
-		t.Fatalf("findings count mismatch: %d vs %d", len(report1.Findings), len(report2.Findings))
-	}
-	for i := range report1.Findings {
-		f1, _ := json.Marshal(report1.Findings[i])
-		f2, _ := json.Marshal(report2.Findings[i])
-		if !bytes.Equal(f1, f2) {
-			t.Errorf("finding %d mismatch across runs:\n%s\nvs\n%s", i, f1, f2)
+
+	for i := 1; i < len(runs); i++ {
+		var r forensics.ScanReport
+		if err := json.Unmarshal(runs[i], &r); err != nil {
+			t.Fatalf("run %d unmarshal failed: %v", i, err)
+		}
+		if r.Summary != baseReport.Summary {
+			t.Errorf("summary mismatch between run 0 and run %d", i)
+		}
+		if len(r.Findings) != len(baseReport.Findings) {
+			t.Fatalf("findings length mismatch: %d vs %d", len(r.Findings), len(baseReport.Findings))
+		}
+		for j := range baseReport.Findings {
+			b1, _ := json.Marshal(baseReport.Findings[j])
+			b2, _ := json.Marshal(r.Findings[j])
+			if !bytes.Equal(b1, b2) {
+				t.Errorf("finding %d mismatch between run 0 and run %d:\n%s\nvs\n%s", j, i, b1, b2)
+			}
 		}
 	}
 }

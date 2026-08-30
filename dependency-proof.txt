@@ -1,8 +1,8 @@
 ================================================================================
 GitForensics — Empirical Dependency and Subprocess Verification Proof
 ================================================================================
-Generated: 2026-08-30T00:25:00Z
-Repository Commit: 917b467785260de1f8d9b3e272624b3dfb9bf364
+Generated: 2026-08-30T14:03:00Z
+Repository Baseline: 8206298c45424eca3ff512dc44923b9adde24f57
 Generated from the repository source code to provide empirical verification
 that GitForensics contains ZERO third-party runtime dependencies and ZERO
 subprocess execution APIs.
@@ -180,12 +180,12 @@ Policy: Zero-Network / Air-Gapped Compliance Confirmed.
 ================================================================================
 Reproducible Build Empirical Result
 ================================================================================
-Generated: 2026-08-30T00:24:54Z
-Commit:    917b467785260de1f8d9b3e272624b3dfb9bf364
+Generated: 2026-08-30T14:03:00Z
+Repository Baseline: 8206298c45424eca3ff512dc44923b9adde24f57
 
 Build Command 1: CGO_ENABLED=0 GOFLAGS=-trimpath go build -o bin/gitforensics_1 ./cmd/gitforensics
 Build Command 2: CGO_ENABLED=0 GOFLAGS=-trimpath go build -o bin/gitforensics_2 ./cmd/gitforensics
-SHA-256 Hash 1:  c226717515e31b7f6d68ab6ce8c8b22e611f9b328df250f62083eff0369b214c
-SHA-256 Hash 2:  c226717515e31b7f6d68ab6ce8c8b22e611f9b328df250f62083eff0369b214c
+SHA-256 Hash 1:  5abccfd2d717d44e4d1b941ca747fd714e78a3d483854c25c2a4239fbedc311f
+SHA-256 Hash 2:  5abccfd2d717d44e4d1b941ca747fd714e78a3d483854c25c2a4239fbedc311f
 Verification:    BIT-FOR-BIT IDENTICAL (Reproducible Build Verified)
 ================================================================================

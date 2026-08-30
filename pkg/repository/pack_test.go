@@ -645,3 +645,167 @@ func TestPackEntryDeclaredSizeMismatchDelta(t *testing.T) {
 		t.Errorf("expected size mismatch anomaly for OFS_DELTA entry with incorrect declared size, got anomalies: %+v", res.Anomalies)
 	}
 }
+
+// Regression Test for FIX #2: Pack trailing-data detection (Cases A, B, C, D)
+func TestPackTrailingDataAnomalies(t *testing.T) {
+	blob1Payload := []byte("First blob content for trailing data test\n")
+	blob1OID := object.ComputeEnvelopeSHA1(object.TypeBlob, int64(len(blob1Payload)), blob1Payload)
+	blob2Payload := []byte("Second blob content for trailing data test\n")
+	blob2OID := object.ComputeEnvelopeSHA1(object.TypeBlob, int64(len(blob2Payload)), blob2Payload)
+
+	// Case A: Declared count = 1, but actual pack contains 2 valid encoded objects before checksum
+	t.Run("CaseA_DeclaredCountSmallerThanEncodedData", func(t *testing.T) {
+		tempDir := t.TempDir()
+		var packBuf bytes.Buffer
+		packBuf.WriteString("PACK")
+		_ = binary.Write(&packBuf, binary.BigEndian, uint32(2))
+		_ = binary.Write(&packBuf, binary.BigEndian, uint32(1)) // Intentionally declared count = 1
+
+		// Write Object 1
+		packBuf.Write(encodePackEntryHeader(PackTypeBlob, int64(len(blob1Payload))))
+		packBuf.Write(compressZlibData(blob1Payload))
+
+		// Write Object 2 (encoded valid object, but beyond declared count)
+		packBuf.Write(encodePackEntryHeader(PackTypeBlob, int64(len(blob2Payload))))
+		packBuf.Write(compressZlibData(blob2Payload))
+
+		packFile := filepath.Join(tempDir, "case_a.pack")
+		_ = os.WriteFile(packFile, finalizePack(packBuf.Bytes()), 0644)
+
+		res, err := ParsePackFile(packFile, 0, 0)
+		if err != nil {
+			t.Fatalf("ParsePackFile failed: %v", err)
+		}
+
+		// First object must be decoded cleanly
+		if res.Objects[blob1OID] == nil {
+			t.Errorf("expected blob1 %s to be resolved", blob1OID)
+		}
+
+		// Must record trailing data anomaly
+		foundTrailingAnomaly := false
+		for _, a := range res.Anomalies {
+			if strings.Contains(a.Description, "unparsed trailing bytes") {
+				foundTrailingAnomaly = true
+				break
+			}
+		}
+		if !foundTrailingAnomaly {
+			t.Errorf("expected unparsed trailing bytes anomaly in Case A, got anomalies: %+v", res.Anomalies)
+		}
+	})
+
+	// Case B: Valid objects followed by extra arbitrary bytes before checksum
+	t.Run("CaseB_ValidObjectsFollowedByExtraBytes", func(t *testing.T) {
+		tempDir := t.TempDir()
+		var packBuf bytes.Buffer
+		packBuf.WriteString("PACK")
+		_ = binary.Write(&packBuf, binary.BigEndian, uint32(2))
+		_ = binary.Write(&packBuf, binary.BigEndian, uint32(1)) // Declared count = 1
+
+		// Write Object 1
+		packBuf.Write(encodePackEntryHeader(PackTypeBlob, int64(len(blob1Payload))))
+		packBuf.Write(compressZlibData(blob1Payload))
+
+		// Extra trailing garbage bytes before checksum
+		packBuf.WriteString("TRAILING_GARBAGE_BYTES_PADDING")
+
+		packFile := filepath.Join(tempDir, "case_b.pack")
+		_ = os.WriteFile(packFile, finalizePack(packBuf.Bytes()), 0644)
+
+		res, err := ParsePackFile(packFile, 0, 0)
+		if err != nil {
+			t.Fatalf("ParsePackFile failed: %v", err)
+		}
+
+		// First object must be resolved
+		if res.Objects[blob1OID] == nil {
+			t.Errorf("expected blob1 %s to be resolved", blob1OID)
+		}
+
+		foundTrailingAnomaly := false
+		for _, a := range res.Anomalies {
+			if strings.Contains(a.Description, "unparsed trailing bytes") {
+				foundTrailingAnomaly = true
+				break
+			}
+		}
+		if !foundTrailingAnomaly {
+			t.Errorf("expected unparsed trailing bytes anomaly in Case B, got anomalies: %+v", res.Anomalies)
+		}
+	})
+
+	// Case C: Extra incomplete/truncated bytes after declared entries
+	t.Run("CaseC_IncompleteTruncatedBytesAfterDeclaredEntries", func(t *testing.T) {
+		tempDir := t.TempDir()
+		var packBuf bytes.Buffer
+		packBuf.WriteString("PACK")
+		_ = binary.Write(&packBuf, binary.BigEndian, uint32(2))
+		_ = binary.Write(&packBuf, binary.BigEndian, uint32(1))
+
+		// Write Object 1
+		packBuf.Write(encodePackEntryHeader(PackTypeBlob, int64(len(blob1Payload))))
+		packBuf.Write(compressZlibData(blob1Payload))
+
+		// Write truncated 3 bytes
+		packBuf.Write([]byte{0x80, 0x12, 0x34})
+
+		packFile := filepath.Join(tempDir, "case_c.pack")
+		_ = os.WriteFile(packFile, finalizePack(packBuf.Bytes()), 0644)
+
+		res, err := ParsePackFile(packFile, 0, 0)
+		if err != nil {
+			t.Fatalf("ParsePackFile failed: %v", err)
+		}
+
+		if res.Objects[blob1OID] == nil {
+			t.Errorf("expected blob1 %s to be resolved", blob1OID)
+		}
+
+		foundTrailingAnomaly := false
+		for _, a := range res.Anomalies {
+			if strings.Contains(a.Description, "unparsed trailing bytes") {
+				foundTrailingAnomaly = true
+				break
+			}
+		}
+		if !foundTrailingAnomaly {
+			t.Errorf("expected unparsed trailing bytes anomaly in Case C, got anomalies: %+v", res.Anomalies)
+		}
+	})
+
+	// Case D: Normal valid pack (no trailing data anomaly)
+	t.Run("CaseD_NormalValidPackNoAnomaly", func(t *testing.T) {
+		tempDir := t.TempDir()
+		var packBuf bytes.Buffer
+		packBuf.WriteString("PACK")
+		_ = binary.Write(&packBuf, binary.BigEndian, uint32(2))
+		_ = binary.Write(&packBuf, binary.BigEndian, uint32(2))
+
+		// Write Object 1
+		packBuf.Write(encodePackEntryHeader(PackTypeBlob, int64(len(blob1Payload))))
+		packBuf.Write(compressZlibData(blob1Payload))
+
+		// Write Object 2
+		packBuf.Write(encodePackEntryHeader(PackTypeBlob, int64(len(blob2Payload))))
+		packBuf.Write(compressZlibData(blob2Payload))
+
+		packFile := filepath.Join(tempDir, "case_d.pack")
+		_ = os.WriteFile(packFile, finalizePack(packBuf.Bytes()), 0644)
+
+		res, err := ParsePackFile(packFile, 0, 0)
+		if err != nil {
+			t.Fatalf("ParsePackFile failed: %v", err)
+		}
+
+		if res.Objects[blob1OID] == nil || res.Objects[blob2OID] == nil {
+			t.Errorf("expected both blobs to be resolved")
+		}
+
+		for _, a := range res.Anomalies {
+			if strings.Contains(a.Description, "unparsed trailing bytes") {
+				t.Errorf("unexpected trailing bytes anomaly in normal pack: %+v", a)
+			}
+		}
+	})
+}

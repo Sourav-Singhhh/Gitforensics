@@ -384,6 +384,12 @@ func ParsePackFile(path string, maxObjectSize int64, maxDeltaDepth int) (*PackFi
 			Location:    path,
 			Description: fmt.Sprintf("pack entry count mismatch: declared %d, successfully parsed %d", declaredCount, len(rawEntries)),
 		})
+	} else if currentOffset < packDataEnd {
+		result.Anomalies = append(result.Anomalies, PackAnomaly{
+			Type:        "PACK_TRUNCATED_OR_CORRUPTED",
+			Location:    fmt.Sprintf("%s:%d", path, currentOffset),
+			Description: fmt.Sprintf("packfile has %d unparsed trailing bytes before checksum (offset %d, checksum starts at %d)", packDataEnd-currentOffset, currentOffset, packDataEnd),
+		})
 	}
 
 	// 4. Resolve Non-Delta and Chained OFS_DELTA objects

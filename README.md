@@ -346,7 +346,7 @@ go build -o bin/gitforensics_2.exe ./cmd/gitforensics
 $h1 = (Get-FileHash bin/gitforensics_1.exe -Algorithm SHA256).Hash
 $h2 = (Get-FileHash bin/gitforensics_2.exe -Algorithm SHA256).Hash
 Write-Host "Build 1: $h1"; Write-Host "Build 2: $h2"
-if ($h1 -eq $h2) { Write-Host "Reproducible build: SUCCESS" } else { Write-Host "Reproducible build: FAILED" }
+if ($h1 -eq $h2) { Write-Host "Reproducible build: SUCCESS" } else { Write-Host "Reproducible build: FAILED"; exit 1 }
 ```
 
 ---

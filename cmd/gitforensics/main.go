@@ -30,6 +30,10 @@ func isInvalidRepoError(err error) bool {
 	if errors.Is(err, object.ErrRepositoryNotFound) || os.IsNotExist(err) {
 		return true
 	}
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		return true
+	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "repository not found") || strings.Contains(msg, "not a git repository") || strings.Contains(msg, "does not exist") || strings.Contains(msg, "no such file or directory")
 }
