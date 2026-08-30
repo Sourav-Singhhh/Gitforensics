@@ -6,10 +6,26 @@
 
 set -euo pipefail
 
-TARGET_DIR="${1:-./demo_repo}"
+TARGET_ARG="${1:-./demo_repo}"
+
+# Safety validation on target directory
+if [ -z "$TARGET_ARG" ] || [ "$TARGET_ARG" = "." ] || [ "$TARGET_ARG" = ".." ] || [ "$TARGET_ARG" = "/" ] || [ "$TARGET_ARG" = "~" ]; then
+  echo "Error: Target directory cannot be root, home, current directory (.), or parent (..)." >&2
+  exit 1
+fi
+
+CURRENT_DIR="$(pwd)"
+PARENT_DIR="$(cd "$(dirname "$TARGET_ARG")" 2>/dev/null && pwd)" || PARENT_DIR="$CURRENT_DIR"
+BASE_NAME="$(basename "$TARGET_ARG")"
+TARGET_DIR="${PARENT_DIR}/${BASE_NAME}"
+
+if [ "$TARGET_DIR" = "$CURRENT_DIR" ] || [ "$TARGET_DIR" = "/" ] || [ "$TARGET_DIR" = "${HOME:-/root}" ]; then
+  echo "Error: Target directory cannot be repository root, root (/), or home." >&2
+  exit 1
+fi
+
 rm -rf "$TARGET_DIR"
 mkdir -p "$TARGET_DIR"
-cd "$TARGET_DIR"
 
 export GIT_AUTHOR_NAME="Alice Security"
 export GIT_AUTHOR_EMAIL="alice@example.com"
@@ -18,36 +34,41 @@ export GIT_COMMITTER_EMAIL="alice@example.com"
 
 echo "Creating deterministic demo repository at: $TARGET_DIR"
 
-git init -b main
-git config user.name "Alice Security"
-git config user.email "alice@example.com"
+# 1. Initialize repo
+git -C "$TARGET_DIR" init -b main
+git -C "$TARGET_DIR" config user.name "Alice Security"
+git -C "$TARGET_DIR" config user.email "alice@example.com"
 
-# 1. Commit 1: Active Secret (Slack Token constructed at runtime for demo)
+# 2. Commit 1 on main (ACTIVE): app.env with Slack Token
 SLACK_PREFIX="xoxb"
 SLACK_TOKEN="${SLACK_PREFIX}-012345678901-0123456789012-0123456789abcdefghijklmn"
-echo "SLACK_BOT_TOKEN=${SLACK_TOKEN}" > app.env
-git add . && git commit -m "Initial commit with config"
+echo "SLACK_BOT_TOKEN=${SLACK_TOKEN}" > "${TARGET_DIR}/app.env"
+git -C "$TARGET_DIR" add app.env
+git -C "$TARGET_DIR" commit -m "Initial commit with active app config"
 
-# 2. Commit 2: Historical Secret (AWS Key that will be deleted)
+# 3. Branch legacy-creds (HISTORICAL): deploy.env with AWS Key (not reachable from main HEAD)
+git -C "$TARGET_DIR" checkout -b legacy-creds
 AWS_PREFIX="AKIA"
 HIST_AWS="${AWS_PREFIX}9876543210FEDCBA"
-echo "AWS_ACCESS_KEY_ID=${HIST_AWS}" > deploy.env
-git add . && git commit -m "Add temporary deploy credentials"
+echo "AWS_ACCESS_KEY_ID=${HIST_AWS}" > "${TARGET_DIR}/deploy.env"
+git -C "$TARGET_DIR" add deploy.env
+git -C "$TARGET_DIR" commit -m "Add legacy deploy credentials"
 
-# 3. Commit 3: Delete deploy.env (Making it HISTORICAL)
-rm deploy.env
-git add . && git commit -m "Remove deploy credentials from tree"
+# 4. Switch back to main (so deploy.env is NOT reachable from main HEAD)
+git -C "$TARGET_DIR" checkout main
 
-# 4. Commit 4: Create a secret and amend it immediately (Making it a ZOMBIE loose object)
+# 5. Commit on main and amend (ZOMBIE): unreferenced loose blob
 ZOMBIE_AWS="${AWS_PREFIX}1111222233334444"
-echo "AWS_SECRET_KEY=${ZOMBIE_AWS}" > zombie_leak.txt
-git add . && git commit -m "Accidental secret to amend"
+echo "AWS_SECRET_KEY=${ZOMBIE_AWS}" > "${TARGET_DIR}/zombie_leak.txt"
+git -C "$TARGET_DIR" add zombie_leak.txt
+git -C "$TARGET_DIR" commit -m "Accidental secret commit"
 
-echo "clean configuration payload" > zombie_leak.txt
-git add . && git commit --amend -m "Clean amended commit"
+echo "clean configuration payload" > "${TARGET_DIR}/zombie_leak.txt"
+git -C "$TARGET_DIR" add zombie_leak.txt
+git -C "$TARGET_DIR" commit --amend -m "Clean amended commit on main"
 
-# 5. Repack to create PACK v2 with OFS_DELTA objects
-git repack -a -d
+# 6. Repack to create PACK v2 with OFS_DELTA objects
+git -C "$TARGET_DIR" repack -a -d
 
 echo ""
 echo "=== DEMO FIXTURE READY ==="

@@ -13,68 +13,74 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Safety validation on target directory
+if ([string]::IsNullOrWhiteSpace($TargetDir)) {
+    Write-Error "Error: Target directory cannot be empty."
+    exit 1
+}
+
+$trimmed = $TargetDir.Trim()
+if ($trimmed -eq "." -or $trimmed -eq ".." -or $trimmed -eq "/" -or $trimmed -eq "\" -or $trimmed -eq "C:\" -or $trimmed -eq "c:\") {
+    Write-Error "Error: Target directory cannot be root, '.', or '..'."
+    exit 1
+}
+
 $absTarget = [System.IO.Path]::GetFullPath($TargetDir)
+$currentDir = [System.IO.Path]::GetFullPath((Get-Location).Path)
+
+if ($absTarget -eq $currentDir) {
+    Write-Error "Error: Target directory cannot be the current working directory."
+    exit 1
+}
+
+$driveRoot = [System.IO.Path]::GetPathRoot($absTarget)
+if ($absTarget -eq $driveRoot) {
+    Write-Error "Error: Target directory cannot be a drive root directory."
+    exit 1
+}
+
 if (Test-Path $absTarget) {
     Remove-Item -Recurse -Force $absTarget
 }
 New-Item -ItemType Directory -Path $absTarget -Force | Out-Null
 
-function run-git {
-    param([string[]]$cmdArgs)
-    $pinfo = New-Object System.Diagnostics.ProcessStartInfo
-    $pinfo.FileName = "git"
-    $pinfo.Arguments = ($cmdArgs -join " ")
-    $pinfo.WorkingDirectory = $absTarget
-    $pinfo.UseShellExecute = $false
-    $pinfo.RedirectStandardOutput = $true
-    $pinfo.RedirectStandardError = $true
-    $pinfo.EnvironmentVariables["GIT_AUTHOR_NAME"] = "Alice Security"
-    $pinfo.EnvironmentVariables["GIT_AUTHOR_EMAIL"] = "alice@example.com"
-    $pinfo.EnvironmentVariables["GIT_COMMITTER_NAME"] = "Alice Security"
-    $pinfo.EnvironmentVariables["GIT_COMMITTER_EMAIL"] = "alice@example.com"
-    $p = [System.Diagnostics.Process]::Start($pinfo)
-    $p.WaitForExit()
-}
-
 Write-Host "Creating deterministic demo repository at: $absTarget"
 
 # 1. Initialize repo
-run-git @("init", "-b", "main")
-run-git @("config", "user.name", "Alice Security")
-run-git @("config", "user.email", "alice@example.com")
+git -C $absTarget init -b main
+git -C $absTarget config user.name "Alice Security"
+git -C $absTarget config user.email "alice@example.com"
 
-# 2. Commit 1: Active Secret (Slack Token constructed at runtime for demo)
+# 2. Commit 1 on main (ACTIVE): app.env with Slack Token
 $slackPrefix = "xoxb"
 $slackToken = "$slackPrefix-012345678901-0123456789012-0123456789abcdefghijklmn"
 Set-Content -Path (Join-Path $absTarget "app.env") -Value "SLACK_BOT_TOKEN=$slackToken"
-run-git @("add", ".")
-run-git @("commit", "-m", "Initial commit with config")
+git -C $absTarget add app.env
+git -C $absTarget commit -m "Initial commit with active app config"
 
-# 3. Commit 2: Historical Secret (AWS Key that will be deleted in next commit)
+# 3. Branch legacy-creds (HISTORICAL): deploy.env with AWS Key (not reachable from main HEAD)
+git -C $absTarget checkout -b legacy-creds
 $awsPrefix = "AKIA"
 $histAWS = "${awsPrefix}9876543210FEDCBA"
 Set-Content -Path (Join-Path $absTarget "deploy.env") -Value "AWS_ACCESS_KEY_ID=$histAWS"
-run-git @("add", ".")
-run-git @("commit", "-m", "Add temporary deploy credentials")
+git -C $absTarget add deploy.env
+git -C $absTarget commit -m "Add legacy deploy credentials"
 
-# 4. Commit 3: Delete deploy.env (Making it HISTORICAL)
-Remove-Item -Path (Join-Path $absTarget "deploy.env")
-run-git @("add", ".")
-run-git @("commit", "-m", "Remove deploy credentials from tree")
+# 4. Switch back to main (so deploy.env is NOT reachable from main HEAD)
+git -C $absTarget checkout main
 
-# 5. Commit 4: Create a secret and amend it immediately (Making it a ZOMBIE loose object)
+# 5. Commit on main and amend (ZOMBIE): unreferenced loose blob
 $zombieAWS = "${awsPrefix}1111222233334444"
 Set-Content -Path (Join-Path $absTarget "zombie_leak.txt") -Value "AWS_SECRET_KEY=$zombieAWS"
-run-git @("add", ".")
-run-git @("commit", "-m", "Accidental secret to amend")
+git -C $absTarget add zombie_leak.txt
+git -C $absTarget commit -m "Accidental secret commit"
 
-# Overwrite and amend -> leaves loose blob unreferenced in .git/objects/
 Set-Content -Path (Join-Path $absTarget "zombie_leak.txt") -Value "clean configuration payload"
-run-git @("add", ".")
-run-git @("commit", "--amend", "-m", "Clean amended commit")
+git -C $absTarget add zombie_leak.txt
+git -C $absTarget commit --amend -m "Clean amended commit on main"
 
 # 6. Repack to create PACK v2 with OFS_DELTA objects
-run-git @("repack", "-a", "-d")
+git -C $absTarget repack -a -d
 
 Write-Host "`n=== DEMO FIXTURE READY ==="
 Write-Host "Try running:"
