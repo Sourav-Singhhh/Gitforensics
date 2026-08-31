@@ -38,9 +38,14 @@ func isInvalidRepoError(err error) bool {
 	return strings.Contains(msg, "repository not found") || strings.Contains(msg, "not a git repository") || strings.Contains(msg, "does not exist") || strings.Contains(msg, "no such file or directory")
 }
 
+var (
+	version   = "0.1.0-dev"
+	commit    = "unknown"
+	buildTime = "unknown"
+)
+
 const (
-	Version = "0.1.0-dev"
-	Usage   = `gitforensics - read-only forensic Git object scanner
+	Usage = `gitforensics - read-only forensic Git object scanner
 
 Usage:
   gitforensics scan [<repo-path>] [flags]
@@ -175,7 +180,7 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 
 	switch cfg.command {
 	case "version":
-		fmt.Fprintf(stdout, "gitforensics %s\n", Version)
+		fmt.Fprintf(stdout, "gitforensics %s (commit %s, built %s)\n", version, commit, buildTime)
 		return 0
 
 	case "help":
