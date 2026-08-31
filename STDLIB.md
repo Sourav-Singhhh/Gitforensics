@@ -1,6 +1,6 @@
 # GitForensics — Standard Library Substitution Ledger
 
-**Document Purpose:** Complete accounting of how GitForensics implements a full Git history forensic analysis engine with **zero third-party runtime dependencies**, relying exclusively on the Go standard library.
+**Document Purpose:** Complete accounting of how GitForensics implements a focused Git history forensic analysis engine within the supported Git object-format scope with **zero third-party runtime dependencies**, relying exclusively on the Go standard library.
 
 ---
 

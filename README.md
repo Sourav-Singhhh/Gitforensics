@@ -37,8 +37,8 @@ GitForensics solves this by performing deep graph traversal and independent phys
 - **Exposure Classification:** Categorizes every finding into `ACTIVE`, `HISTORICAL`, or `ZOMBIE` states.
 - **Multi-Signal Detector:** Combines high-precision regex patterns, Shannon entropy calculation, path context weighting, and false-positive penalty heuristics.
 - **Strict Safe Redaction:** Centralized redaction ensures raw secret material and private keys (`[REDACTED PRIVATE KEY]`) never leak to `stdout`, `stderr`, or JSON reports.
-- **Full History Mapping:** Tracks commit ancestry, author metadata, and file path evolution across linear and merge histories.
-- **Explain Subcommand:** Provides actionable, state-specific remediation guidance for any finding ID.
+- **Forensic History Mapping:** Tracks reachable commit ancestry, author metadata, and file path evolution across linear and merge histories.
+- **Explain Subcommand:** Provides state-specific forensic explanation and recovery context for any finding ID.
 
 ---
 
@@ -121,12 +121,12 @@ GitForensics is built upon a modular, specification-driven foundation:
 
 Every detected secret candidate is assigned exactly one exposure state:
 
-1. **`ACTIVE` (Current HEAD Exposure):**
-   The secret blob is directly reachable from the repository's current `HEAD` commit. It is checked out in the working tree and visible in active branches.
-2. **`HISTORICAL` (Branch/Tag/Ref Exposure):**
-   The secret is no longer in `HEAD`, but is reachable from another branch, tag, remote, or custom Git reference (`refs/**`). Anyone cloning the repository will download this object.
+1. **`ACTIVE` (Current HEAD DAG Exposure):**
+   The secret blob is reachable from the repository's current `HEAD` commit through its commit ancestry DAG. It may or may not be checked out in the current working-tree snapshot.
+2. **`HISTORICAL` (Other Ref/Branch Exposure):**
+   The secret blob is not reachable from current `HEAD`, but remains reachable from another current Git reference such as a branch, tag, remote, or custom reference (`refs/**`). Anyone cloning the repository with full refs will receive this object.
 3. **`ZOMBIE` (Dangling/Orphan Exposure):**
-   The secret blob is physically present on disk (in loose `.git/objects/` or supported packfiles) but is completely unreferenced by any current Git branch, tag, or ref. It is invisible to `git log` but directly recoverable from raw storage until `git gc --prune=now` deletes it. *(Note: Because zombie objects are unreferenced by any commit DAG or tree, `"occurrences": null` and `"timeline": null` in JSON output, as there are no reachable commit pointers or file paths to attach.)*
+   The secret blob is physically present on disk (in loose `.git/objects/` or supported packfiles) but is completely unreferenced by any current Git branch, tag, or ref. It is invisible to `git log` but directly recoverable from local storage by reading the object until `git gc --prune=now` deletes it. *(Note: Because zombie objects are unreferenced by any commit DAG or tree, `"occurrences": null` and `"timeline": null` in JSON output, as there are no reachable commit pointers or file paths to attach.)*
 4. **`UNRESOLVED_PACK_ONLY` (Coverage Gap):**
    The object is referenced in the Git DAG but its payload could not be extracted (e.g. unsupported `REF_DELTA` or truncated pack). Unresolved objects are recorded as coverage gaps and are **never** classified as `ZOMBIE`.
 
